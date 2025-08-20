@@ -1,0 +1,18 @@
+body { font-family: system-ui, sans-serif; margin:0; background:#fff; color:#222; }
+header, footer { padding:10px; border-bottom:1px solid #ddd; }
+footer { border-top:1px solid #ddd; border-bottom:none; font-size:12px; text-align:center; }
+.toolbar { display:flex; gap:8px; align-items:center; }
+.spacer { flex:1 1 auto; }
+.container { padding:12px; }
+.calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.tile { border:1px solid #ddd; border-radius:8px; padding:6px; min-height:80px; display:flex; flex-direction:column; }
+.tile.ok { background:#eaf8ea; border-color:#bfe5bf; }
+.tile.dim { background:#f6f6f6; color:#999; }
+.tile header { display:flex; gap:4px; align-items:center; font-weight:bold; }
+.badges { margin-left:auto; font-size:11px; display:flex; gap:4px; }
+.day-actions { margin-top:auto; display:flex; gap:6px; font-size:12px; }
+
+/* 모달 */
+.modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.2); display:none; }
+.modal { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:#fff; padding:16px; border-radius:12px; display:none; width:min(500px,90%); }
+.modal-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }

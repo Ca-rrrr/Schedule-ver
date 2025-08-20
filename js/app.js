@@ -1,5 +1,5 @@
 // ====== 설정 ======
-const GAS_URL = "https://script.google.com/macros/s/AKfycbz6DTN6_KL2HHONc8iMmOpsa4x9o5fULRdU90my59qFplXM7uhSQoVMs_ngLoxYryyc/exec"; // 네 /exec 주소
+const GAS_URL = "https://script.google.com/macros/s/AKfycbz6DTN6_KL2HHONc8iMmOpsa4x9o5fULRdU90my59qFplXM7uhSQoVMs_ngLoxYryyc/exec";
 
 // 깃허브페이지 하위경로(/Schedule-ver) 포함 origin 전송
 function repoBase() {
@@ -29,9 +29,15 @@ let monthRows = [];        // [{date, member_name, status, note}]
 let selectedMember = "";   // name
 let cur = new Date();      // 현재 표시 월
 
+// 디자인용 파생 상태
+let totalMembers = 0;
+let dateSummary = new Map(); // key: 'YYYY-MM-DD' -> {unavail, notes, rows:[]}
+
 // ====== 엘리먼트 ======
 const monthLabel = document.getElementById('monthLabel');
 const grid = document.getElementById('grid');
+grid && grid.classList.add('grid'); // CSS grid 적용 보장
+
 const sel = document.getElementById('memberSelect');
 
 const dayDlg = document.getElementById('dayDlg');
@@ -59,8 +65,7 @@ function addMonths(d, n){ return new Date(d.getFullYear(), d.getMonth()+n, 1); }
 function monthDates(d){
   const first = firstOfMonth(d);
   const month = first.getMonth();
-  // 주 시작을 월요일로 맞추고 싶으면 조정 가능. 여기서는 일요일 시작.
-  const start = new Date(first); start.setDate(1 - start.getDay());
+  const start = new Date(first); start.setDate(1 - start.getDay()); // 일요일 시작
   const weeks = [];
   for(let i=0;i<6;i++){
     const row = [];
@@ -77,11 +82,27 @@ function findRow(dateStr, name){
   return monthRows.find(r => r.date === dateStr && r.member_name === name);
 }
 
+// 월 데이터 집계(디자인/뱃지용)
+function summarizeByDate(rows){
+  const map = new Map();
+  for(const r of rows){
+    const d = String(r.date).slice(0,10);
+    if(!map.has(d)) map.set(d, {unavail:0, notes:0, rows:[]});
+    const s = map.get(d);
+    s.rows.push(r);
+    if ((r.status || '') === '❌') s.unavail++;
+    if ((r.note || '').trim() !== '') s.notes++;
+  }
+  return map;
+}
+
 // ====== 멤버 로드 & 드롭다운 ======
 async function loadMembers(){
   const r = await apiGet({ action: "members" });
   if (!r.ok) throw new Error(r.error || "members failed");
   members = r.data || [];
+  totalMembers = members.length || 0;
+
   // 옵션 채우기
   sel.innerHTML = "";
   for (const m of members){
@@ -101,9 +122,67 @@ async function loadMonth(){
   const r = await apiGet({ action:"month", year:y, month:m });
   if (!r.ok) throw new Error(r.error || "month failed");
   monthRows = r.data || [];
+  dateSummary = summarizeByDate(monthRows);
   renderGrid();
 }
 
+// ====== 타일 생성 (디자인 적용) ======
+function buildDayTile(d, inMonth){
+  const dStr = ymd(d);
+  const sum = dateSummary.get(dStr) || {unavail:0, notes:0, rows:[]};
+  const yesCount = Math.max(totalMembers - sum.unavail, 0);
+  const myRow = findRow(dStr, selectedMember);
+
+  // 루트
+  const el = document.createElement('div');
+  el.className = 'day';
+  if (!inMonth) el.classList.add('muted');
+  if (inMonth && sum.unavail === 0) el.classList.add('ok');               // ✅ 모두 가능
+  if (myRow?.status === '❌') el.classList.add('unavail-me');             // 내가 ❌
+  const today = new Date(); today.setHours(0,0,0,0);
+  if (d.getTime() === today.getTime()) el.classList.add('today');
+
+  // 헤더
+  const head = document.createElement('div');
+  head.className = 'day__head';
+  head.innerHTML = `
+    <div class="day__num">${d.getDate()}</div>
+    <div class="day__dow">(${['일','월','화','수','목','금','토'][d.getDay()]})</div>
+    <div class="badges">
+      <span class="badge ok">☺️${yesCount}</span>
+      ${sum.notes > 0 ? `<span class="badge note">📝${sum.notes}</span>` : ''}
+    </div>
+  `;
+  el.appendChild(head);
+
+  // 하단 액션
+  const actions = document.createElement('div');
+  actions.className = 'day__actions';
+  const wrap = document.createElement('label');
+  wrap.className = 'checkbox';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = myRow?.status === '❌';
+  const lb = document.createElement('span'); lb.textContent = '불가';
+  wrap.append(cb, lb);
+
+  const btn = document.createElement('button');
+  btn.className = 'thin';
+  btn.textContent = '메모';
+
+  cb.addEventListener('change', async () => {
+    await apiPost({ action:'toggleUnavailable', date: dStr, member_name:selectedMember, is_unavail: cb.checked });
+    await loadMonth();
+  });
+  btn.addEventListener('click', () => openDayDialog(d));
+
+  actions.append(wrap, btn);
+  el.appendChild(actions);
+
+  return el;
+}
+
+// ====== 그리드 렌더 ======
 function renderGrid(){
   monthLabel.textContent = `${cur.getFullYear()}년 ${cur.getMonth()+1}월`;
   grid.innerHTML = "";
@@ -111,44 +190,7 @@ function renderGrid(){
   for (const wk of weeks){
     for (const d of wk){
       const inMonth = (d.getMonth() === cur.getMonth());
-      const tile = document.createElement('div');
-      tile.className = "tile" + (inMonth? "" : " dim");
-
-      // 헤더
-      const head = document.createElement('div');
-      head.className = "head";
-      const h1 = document.createElement('div');
-      h1.textContent = d.getDate();
-      const h2 = document.createElement('div');
-      const dows = ['일','월','화','수','목','금','토'];
-      h2.className = "dow"; h2.textContent = `(${dows[d.getDay()]})`;
-      const badges = document.createElement('div');
-      badges.className = "badges";
-
-      // 선택 멤버의 상태
-      const row = findRow(ymd(d), selectedMember);
-      if (row?.status === '❌') badges.append('❌');
-      if ((row?.note||'').trim()!=='') badges.append('📝');
-
-      head.append(h1, h2, badges);
-      tile.append(head);
-
-      // 하단 빠른 액션 (불가 체크, 메모 버튼)
-      const line = document.createElement('div'); line.className = "line";
-      const cb = document.createElement('input'); cb.type='checkbox'; cb.checked = row?.status === '❌';
-      const lb = document.createElement('span'); lb.textContent = '불가';
-      const btn = document.createElement('button'); btn.textContent='메모';
-
-      cb.addEventListener('change', async () => {
-        await apiPost({ action:'toggleUnavailable', date: ymd(d), member_name: selectedMember, is_unavail: cb.checked });
-        await loadMonth();
-      });
-      btn.addEventListener('click', () => openDayDialog(d));
-
-      line.append(cb, lb, btn);
-      tile.append(line);
-
-      grid.append(tile);
+      grid.appendChild(buildDayTile(d, inMonth));
     }
   }
 }

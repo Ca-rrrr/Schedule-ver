@@ -1,150 +1,242 @@
-// ===== 설정 =====
-const GAS_URL = "https://script.google.com/macros/s/AKfycbz1iIRSQrBVuKeN3Y-39qwYxeTtonZKMQ4DUYY-lk_rQfFMPRQ6tVHUZsSHuqxECJir/exec";
+// ====== 설정 ======
+const GAS_URL = "https://script.google.com/macros/s/AKfycbznfghXnQSxfhB5nA1va6EU3IB9vjoaRxHFnkGBOHPmk0WuguGp07EnZaFJTbPrGQX8/exec"; // 네 /exec 주소
 
-const WEEK = ["월","화","수","목","금","토","일"];
-let today = new Date();
-let curYear = today.getFullYear();
-let curMonth = today.getMonth()+1;
-let members = [];
-let avday = [];
-let memberName = null;
-let modalDate = null;
-
-// ===== API =====
-async function apiGet(params){
-  const url = GAS_URL + "?" + new URLSearchParams(params);
-  const res = await fetch(url);
+// 깃허브페이지 하위경로(/Schedule-ver) 포함 origin 전송
+function repoBase() {
+  const p = location.pathname;
+  return p.startsWith('/Schedule-ver') ? (location.origin + '/Schedule-ver') : location.origin;
+}
+function withOrigin(params = {}) {
+  return new URLSearchParams({ ...params, origin: repoBase() }).toString();
+}
+async function apiGet(params) {
+  const res = await fetch(GAS_URL + "?" + withOrigin(params));
   return res.json();
 }
-async function apiPost(body){
-  const res = await fetch(GAS_URL,{
-    method:"POST", headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(body)
+async function apiPost(body) {
+  const res = await fetch(GAS_URL + "?" + withOrigin(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
   return res.json();
 }
 
-// ===== 데이터 로드 =====
-async function loadMembers(){
-  const r = await apiGet({action:"members"});
-  members = r.data||[];
-}
-async function loadMonth(){
-  const r = await apiGet({action:"month",year:curYear,month:curMonth});
-  avday = r.data||[];
-}
+// ====== 상태 ======
+const EMOJI_CHOICES = ["🩷","💛","💙","💜","💚","🧡","🩵","🤍","🖤","💗","💖","⭐","🌙","🌸","🍑","🫧","🍀"];
+let members = [];          // [{member_id,name,color,joined_at}]
+let monthRows = [];        // [{date, member_name, status, note}]
+let selectedMember = "";   // name
+let cur = new Date();      // 현재 표시 월
 
-// ===== 렌더 =====
-function setYM(){
-  document.getElementById("ym").textContent = `${curYear}년 ${curMonth}월`;
+// ====== 엘리먼트 ======
+const monthLabel = document.getElementById('monthLabel');
+const grid = document.getElementById('grid');
+const sel = document.getElementById('memberSelect');
+
+const dayDlg = document.getElementById('dayDlg');
+const dayTitle = document.getElementById('dayTitle');
+const chkUnavail = document.getElementById('chkUnavail');
+const noteBox = document.getElementById('noteBox');
+const btnSaveNote = document.getElementById('btnSaveNote');
+const btnCloseDay = document.getElementById('btnCloseDay');
+
+const memDlg = document.getElementById('memDlg');
+const memList = document.getElementById('memList');
+const newEmoji = document.getElementById('newEmoji');
+const newName = document.getElementById('newName');
+const btnAddMem = document.getElementById('btnAddMem');
+const btnCloseMem = document.getElementById('btnCloseMem');
+
+// ====== 유틸 ======
+function ymd(d){ return d.toISOString().slice(0,10); }
+function formatK(d){
+  const w = ['일','월','화','수','목','금','토'][d.getDay()];
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${w})`;
 }
-function fmt(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
-function getStatusNote(dateStr,name){
-  const row=avday.find(r=>r.date===dateStr && r.member_name===name);
-  return {status:row?.status||"", note:row?.note||""};
-}
-function buildMonthMatrix(y,m){
-  const first=new Date(y,m-1,1);
-  const firstDow=(first.getDay()+6)%7;
-  const start=new Date(y,m-1,1-firstDow);
-  const weeks=[]; let d=new Date(start);
-  for(let w=0;w<6;w++){
-    const row=[];
-    for(let i=0;i<7;i++){ row.push(new Date(d)); d.setDate(d.getDate()+1); }
+function firstOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+function addMonths(d, n){ return new Date(d.getFullYear(), d.getMonth()+n, 1); }
+function monthDates(d){
+  const first = firstOfMonth(d);
+  const month = first.getMonth();
+  // 주 시작을 월요일로 맞추고 싶으면 조정 가능. 여기서는 일요일 시작.
+  const start = new Date(first); start.setDate(1 - start.getDay());
+  const weeks = [];
+  for(let i=0;i<6;i++){
+    const row = [];
+    for(let j=0;j<7;j++){
+      const dd = new Date(start); dd.setDate(start.getDate() + (i*7+j));
+      row.push(dd);
+    }
     weeks.push(row);
-    if(d.getMonth()!==m-1 && d.getDay()===1) break;
+    if (row.some(x => x.getMonth() === month) && weeks.length>=5 && weeks[weeks.length-1].every(x=>x.getMonth()!==month)) break;
   }
   return weeks;
 }
-async function render(){
-  setYM();
-  const cal=document.getElementById("cal"); cal.innerHTML="";
-  const weeks=buildMonthMatrix(curYear,curMonth);
-  weeks.flat().forEach(d=>{
-    const dateStr=fmt(d);
-    const {status}=getStatusNote(dateStr,memberName||"");
-    const tile=document.createElement("div");
-    tile.className="tile"+((d.getMonth()+1)!==curMonth?" dim":"")+(status?"":"");
-    const wd=WEEK[(d.getDay()+6)%7];
-    const head=document.createElement("header");
-    head.innerHTML=`<div>${d.getDate()}</div><div style="font-size:12px;color:#888">(${wd})</div>`;
-    tile.appendChild(head);
-
-    const cb=document.createElement("input");
-    cb.type="checkbox"; cb.checked=(status==="❌");
-    cb.addEventListener("change",async()=>{
-      await apiPost({action:"toggleUnavailable",date:dateStr,member_name:memberName,is_unavail:cb.checked});
-      await loadMonth(); render();
-    });
-    const btn=document.createElement("button"); btn.textContent="메모";
-    btn.onclick=()=>openModal(dateStr);
-
-    const actions=document.createElement("div");
-    actions.className="day-actions"; actions.append(cb,"불가",btn);
-    tile.appendChild(actions);
-
-    cal.appendChild(tile);
-  });
+function findRow(dateStr, name){
+  return monthRows.find(r => r.date === dateStr && r.member_name === name);
 }
 
-// ===== 모달 =====
-function openModal(dateStr){
-  modalDate=dateStr;
-  const {status,note}=getStatusNote(dateStr,memberName||"");
-  document.getElementById("md-title").textContent=dateStr;
-  document.getElementById("md-unavail").checked=(status==="❌");
-  document.getElementById("md-note").value=note||"";
-  document.getElementById("mbg").style.display="block";
-  document.getElementById("modal").style.display="block";
-  renderAllNotes(dateStr);
-}
-function closeModal(){
-  document.getElementById("mbg").style.display="none";
-  document.getElementById("modal").style.display="none";
-}
-function renderAllNotes(dateStr){
-  const wrap=document.getElementById("md-allnotes");
-  wrap.innerHTML="";
-  avday.filter(r=>r.date===dateStr && r.note.trim()).forEach(r=>{
-    const div=document.createElement("div");
-    div.textContent=`${r.member_name} ${r.status==="❌"?"(❌)":""}: ${r.note}`;
-    wrap.appendChild(div);
-  });
-}
-
-// ===== 이벤트 =====
-document.getElementById("prevBtn").onclick=async()=>{
-  curMonth--; if(curMonth<1){curMonth=12; curYear--;}
-  await loadMonth(); render();
-};
-document.getElementById("nextBtn").onclick=async()=>{
-  curMonth++; if(curMonth>12){curMonth=1; curYear++;}
-  await loadMonth(); render();
-};
-document.getElementById("reloadBtn").onclick=async()=>{
-  await loadMembers(); await loadMonth(); fillMemberSel(); render();
-};
-document.getElementById("md-close").onclick=closeModal;
-document.getElementById("md-save").onclick=async()=>{
-  await apiPost({action:"toggleUnavailable",date:modalDate,member_name:memberName,is_unavail:document.getElementById("md-unavail").checked});
-  await apiPost({action:"saveNote",date:modalDate,member_name:memberName,note:document.getElementById("md-note").value});
-  await loadMonth(); render(); closeModal();
-};
-
-// ===== 멤버 선택 =====
-function fillMemberSel(){
-  const sel=document.getElementById("memberSel"); sel.innerHTML="";
-  members.forEach(m=>{
-    const opt=document.createElement("option");
-    opt.value=m.name; opt.textContent=`${(m.color||"")} ${m.name}`;
+// ====== 멤버 로드 & 드롭다운 ======
+async function loadMembers(){
+  const r = await apiGet({ action: "members" });
+  if (!r.ok) throw new Error(r.error || "members failed");
+  members = r.data || [];
+  // 옵션 채우기
+  sel.innerHTML = "";
+  for (const m of members){
+    const opt = document.createElement('option');
+    opt.value = m.name;
+    opt.textContent = `${m.color || ''} ${m.name}`.trim();
     sel.appendChild(opt);
-  });
-  if(!memberName) memberName=members[0]?.name||"";
-  sel.value=memberName;
-  sel.onchange=()=>{memberName=sel.value; render();};
+  }
+  if (!selectedMember && members.length) selectedMember = members[0].name;
+  sel.value = selectedMember || "";
 }
 
-// ===== 초기 부트 =====
-(async()=>{
-  await loadMembers(); await loadMonth(); fillMemberSel(); render();
+// ====== 월 데이터 로드 & 그리드 ======
+async function loadMonth(){
+  const y = cur.getFullYear();
+  const m = cur.getMonth()+1;
+  const r = await apiGet({ action:"month", year:y, month:m });
+  if (!r.ok) throw new Error(r.error || "month failed");
+  monthRows = r.data || [];
+  renderGrid();
+}
+
+function renderGrid(){
+  monthLabel.textContent = `${cur.getFullYear()}년 ${cur.getMonth()+1}월`;
+  grid.innerHTML = "";
+  const weeks = monthDates(cur);
+  for (const wk of weeks){
+    for (const d of wk){
+      const inMonth = (d.getMonth() === cur.getMonth());
+      const tile = document.createElement('div');
+      tile.className = "tile" + (inMonth? "" : " dim");
+
+      // 헤더
+      const head = document.createElement('div');
+      head.className = "head";
+      const h1 = document.createElement('div');
+      h1.textContent = d.getDate();
+      const h2 = document.createElement('div');
+      const dows = ['일','월','화','수','목','금','토'];
+      h2.className = "dow"; h2.textContent = `(${dows[d.getDay()]})`;
+      const badges = document.createElement('div');
+      badges.className = "badges";
+
+      // 선택 멤버의 상태
+      const row = findRow(ymd(d), selectedMember);
+      if (row?.status === '❌') badges.append('❌');
+      if ((row?.note||'').trim()!=='') badges.append('📝');
+
+      head.append(h1, h2, badges);
+      tile.append(head);
+
+      // 하단 빠른 액션 (불가 체크, 메모 버튼)
+      const line = document.createElement('div'); line.className = "line";
+      const cb = document.createElement('input'); cb.type='checkbox'; cb.checked = row?.status === '❌';
+      const lb = document.createElement('span'); lb.textContent = '불가';
+      const btn = document.createElement('button'); btn.textContent='메모';
+
+      cb.addEventListener('change', async () => {
+        await apiPost({ action:'toggleUnavailable', date: ymd(d), member_name: selectedMember, is_unavail: cb.checked });
+        await loadMonth();
+      });
+      btn.addEventListener('click', () => openDayDialog(d));
+
+      line.append(cb, lb, btn);
+      tile.append(line);
+
+      grid.append(tile);
+    }
+  }
+}
+
+// ====== 날짜 상세 모달 ======
+function openDayDialog(d){
+  dayTitle.textContent = formatK(d);
+  const row = findRow(ymd(d), selectedMember);
+  chkUnavail.checked = row?.status === '❌';
+  noteBox.value = row?.note || '';
+  dayDlg.dataset.date = ymd(d);
+  dayDlg.showModal();
+}
+btnCloseDay.onclick = () => dayDlg.close();
+btnSaveNote.onclick = async () => {
+  const date = dayDlg.dataset.date;
+  await apiPost({ action:'toggleUnavailable', date, member_name:selectedMember, is_unavail: chkUnavail.checked });
+  await apiPost({ action:'saveNote', date, member_name:selectedMember, note: noteBox.value });
+  dayDlg.close();
+  await loadMonth();
+};
+
+// ====== 멤버 관리 모달 ======
+function fillEmojiSelect(selEl, val){
+  selEl.innerHTML = "";
+  for (const e of EMOJI_CHOICES){
+    const o = document.createElement('option'); o.value=e; o.textContent=e;
+    if (val===e) o.selected = true;
+    selEl.appendChild(o);
+  }
+}
+function rebuildMemberList(){
+  memList.innerHTML = "";
+  for (const m of members){
+    const row = document.createElement('div'); row.className='mem-row';
+
+    const em = document.createElement('select'); fillEmojiSelect(em, m.color || "");
+    const nm = document.createElement('input'); nm.value = m.name; nm.style.flex='1 1 240px';
+    const save = document.createElement('button'); save.textContent='저장';
+    const del  = document.createElement('button'); del.textContent='삭제';
+
+    save.onclick = async () => {
+      const r = await apiPost({ action:"updateMember", member_id:m.member_id, name:nm.value.trim(), color:em.value });
+      if (!r.ok && r.error){ alert(r.error); return; }
+      await loadMembers(); await loadMonth();
+    };
+    del.onclick = async () => {
+      if (!confirm(`'${m.name}' 삭제할까요?`)) return;
+      const r = await apiPost({ action:"deleteMember", member_id:m.member_id });
+      if (!r.ok && r.error){ alert(r.error); return; }
+      if (selectedMember === m.name) selectedMember = "";
+      await loadMembers(); await loadMonth();
+    };
+
+    row.append(em,nm,save,del);
+    memList.append(row);
+  }
+}
+document.getElementById('manageBtn').onclick = async () => {
+  fillEmojiSelect(newEmoji, EMOJI_CHOICES[0]);
+  newName.value = "";
+  rebuildMemberList();
+  memDlg.showModal();
+};
+btnCloseMem.onclick = () => memDlg.close();
+btnAddMem.onclick = async () => {
+  const name = newName.value.trim();
+  if (!name){ alert("이름을 입력하세요"); return; }
+  const r = await apiPost({ action:"addMember", name, color:newEmoji.value });
+  if (!r.ok && r.error){ alert(r.error); return; }
+  selectedMember = name;
+  await loadMembers(); await loadMonth();
+  rebuildMemberList();
+};
+
+// ====== 상단 버튼 & 드롭다운 ======
+document.getElementById('prevBtn').onclick = async () => { cur = addMonths(cur, -1); await loadMonth(); };
+document.getElementById('nextBtn').onclick = async () => { cur = addMonths(cur, 1); await loadMonth(); };
+document.getElementById('reloadBtn').onclick = async () => { await loadMembers(); await loadMonth(); };
+sel.onchange = async (e) => { selectedMember = e.target.value || ""; await loadMonth(); };
+
+// ====== 초기 로드 ======
+(async function init(){
+  try{
+    await loadMembers();
+    await loadMonth();
+  }catch(err){
+    console.error(err);
+    alert("초기 로드 실패: " + err.message);
+  }
 })();

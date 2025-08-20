@@ -3,38 +3,64 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>🏝️ 일정 체크</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <title>일정간단 ver</title>
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <header class="toolbar">
-    <button id="prevBtn">◀</button>
-    <div id="ym" class="ym"></div>
-    <button id="nextBtn">▶</button>
-    <div class="spacer"></div>
-    <select id="memberSel"></select>
-    <button id="reloadBtn">🔄 새로고침</button>
+  <header class="topbar">
+    <div class="nav">
+      <button id="prevBtn">◀</button>
+      <div id="monthLabel"></div>
+      <button id="nextBtn">▶</button>
+    </div>
+
+    <div class="controls">
+      <select id="memberSelect"></select>
+      <button id="manageBtn">멤버관리</button>
+      <button id="reloadBtn">새로고침</button>
+    </div>
   </header>
 
-  <main class="container">
-    <div class="calendar" id="cal"></div>
+  <main>
+    <div id="grid" class="grid"></div>
   </main>
 
-  <footer>© 2025 AR C — All rights reserved.</footer>
+  <footer class="footer">© 2025 AR C — All rights reserved.</footer>
 
-  <!-- 모달 -->
-  <div class="modal-backdrop" id="mbg"></div>
-  <div class="modal" id="modal">
-    <div class="modal-head">
-      <span id="md-title"></span>
-      <button id="md-close">닫기</button>
+  <!-- 날짜 상세 모달 -->
+  <dialog id="dayDlg" class="dlg">
+    <h3 id="dayTitle"></h3>
+    <label class="line">
+      <input type="checkbox" id="chkUnavail" />
+      <span>이 날짜 불가</span>
+    </label>
+    <label class="line block">
+      <span>메모</span>
+      <textarea id="noteBox" rows="5" placeholder="부분 가능/사유 등"></textarea>
+    </label>
+    <div class="right">
+      <button id="btnSaveNote">저장</button>
+      <button id="btnCloseDay">닫기</button>
     </div>
-    <label><input type="checkbox" id="md-unavail" /> 이 날짜 불가</label>
-    <textarea id="md-note" rows="5" placeholder="메모(사유 등)"></textarea>
-    <button id="md-save">저장</button>
-    <div id="md-allnotes"></div>
-  </div>
+  </dialog>
 
-  <script src="js/app.js"></script>
+  <!-- 멤버 관리 모달 -->
+  <dialog id="memDlg" class="dlg">
+    <h3>멤버 관리</h3>
+
+    <div class="row add">
+      <select id="newEmoji"></select>
+      <input id="newName" placeholder="새 이름" />
+      <button id="btnAddMem">추가</button>
+    </div>
+
+    <div id="memList" class="mem-list"></div>
+
+    <div class="right">
+      <button id="btnCloseMem">닫기</button>
+    </div>
+  </dialog>
+
+  <script src="./app.js"></script>
 </body>
 </html>

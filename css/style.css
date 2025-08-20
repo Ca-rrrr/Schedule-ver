@@ -5,7 +5,7 @@
   --ok:#eaf8ea;
   --muted:#f6f6f6;
   --accent:#7c5cfa;
-  --border:#d7c8ff;        /* 더 진한 보라 */
+  --border:#d7c8ff;        /* 일정 칸 라인 색 (진한 연보라) */
   --gap:10px;
   --radius:16px;
   --shadow:0 1px 0 rgba(0,0,0,.03), 0 8px 24px rgba(124,92,250,.06);
@@ -19,22 +19,24 @@ body{
   color:#222;
   font-family:system-ui,-apple-system,Segoe UI,Roboto,Pretendard,Apple SD Gothic Neo,Malgun Gothic,sans-serif;
   line-height:1.35;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* ===== top bar ===== */
 .topbar{
   position:sticky; top:0; z-index:10;
   display:flex; flex-wrap:wrap; align-items:center; gap:10px;
-  padding:12px; background:var(--bg); border-bottom:1px solid #efe8fb;
+  padding:calc(12px + env(safe-area-inset-top)) 12px 12px;
+  background:var(--bg);
+  border-bottom:1px solid #efe8fb;
 }
 .nav{ display:flex; align-items:center; gap:8px; }
 .controls{ margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
 #monthLabel{ font-weight:800; font-size:20px; }
-
 select, button{ font-size:14px; }
 button{
   padding:.42rem .62rem; border:1px solid #e6e0f6; background:#fff;
-  border-radius:10px;
+  border-radius:10px; cursor:pointer;
 }
 button:active{ transform:translateY(1px); }
 
@@ -44,53 +46,93 @@ button:active{ transform:translateY(1px); }
   gap:var(--gap);
   padding:12px;
   grid-template-columns: repeat(7, minmax(114px, 1fr)); /* 데스크톱 7칸 */
+  grid-auto-rows: 1fr; /* 행 높이 균등 */
 }
 
-/* ===== tile (칸 라인/배경 강하게) ===== */
-.tile{
+/* ===== day tile (JS에서 className='day') =====
+   테두리는 border 대신 'box-shadow 링'으로 → 모바일에서도 선명 */
+.day{
   background:var(--card);
-  border:1.5px solid var(--border);   /* ← 라인 두께/색 강화 */
   border-radius:var(--radius);
-  box-shadow:var(--shadow);
-  padding:10px 12px;
-  min-height:clamp(118px, 23vw, 168px);
+  box-shadow:
+    var(--shadow),               /* 부드러운 그림자 */
+    0 0 0 1.5px var(--border);   /* 선명한 테두리 링 */
+  padding:12px 14px;
+  min-height:clamp(128px, 26vw, 180px);
   display:flex; flex-direction:column; justify-content:space-between;
 }
-.tile.dim{ background:var(--muted); opacity:.92; }
-.tile.ok{ background:var(--ok); border-color:#bfe5bf; }
-.tile.today{ outline:2px solid var(--accent); outline-offset:-2px; }
-
-.head{ display:flex; align-items:baseline; gap:6px; }
-.head .dow{ color:#888; font-size:12px; }
-.badges{ margin-left:auto; display:flex; gap:4px; font-size:12px; align-items:center; }
-
-.line{
-  display:flex; align-items:center; gap:8px;
-  margin-top:8px;
+.day.muted{
+  background:var(--muted); opacity:.96;
+  box-shadow:var(--shadow), 0 0 0 1.5px #e6e6ea;
 }
-.line input[type="checkbox"]{ width:18px; height:18px; }
-.line span{ color:#666; }
-.line button{ padding:.36rem .58rem; }
+.day.ok{
+  background:var(--ok);
+  box-shadow:var(--shadow), 0 0 0 1.5px #bfe5bf;
+}
+.day.today{ outline:2px solid var(--accent); outline-offset:-2px; }
+/* 선택 멤버가 ❌인 날 강조(연분홍 링 + 살짝 배경) */
+.day.unavail-me{
+  background:#fff7f7;
+  box-shadow:var(--shadow), 0 0 0 1.5px #ffb7c5;
+}
+
+/* 헤더(날짜/요일/배지) */
+.day__head{ display:flex; align-items:baseline; gap:6px; }
+.day__num{ font-weight:800; }
+.day__dow{ color:#888; font-size:12px; }
+.badges{ margin-left:auto; display:flex; gap:4px; align-items:center; }
+.badge{
+  font-size:12px; line-height:1;
+  padding:.22rem .38rem; border-radius:999px; background:#f4f2ff; border:1px solid #e7e2ff;
+}
+.badge.note{ background:#fff7e8; border-color:#ffe1b3; }
+.badge.ok{ background:#ecfff1; border-color:#bfe5bf; }
+
+/* 하단 액션(체크/메모) */
+.day__actions{ display:flex; align-items:center; gap:10px; margin-top:8px; }
+.checkbox{ display:flex; align-items:center; gap:8px; }
+.day__actions input[type="checkbox"]{ width:18px; height:18px; }
+.day__actions .thin{
+  padding:.32rem .5rem; font-size:13px;
+  border:1px solid #e1def2; background:#fff; border-radius:10px;
+}
+
+/* ===== dialogs & lists ===== */
+.dlg{ border:none; border-radius:14px; padding:16px 16px 14px; }
+.dlg::backdrop{ background:rgba(0,0,0,.28); }
+.line{ display:flex; align-items:center; gap:8px; margin:10px 0; }
+.line.block{ flex-direction:column; align-items:stretch; }
+.line textarea{ width:100%; resize:vertical; }
+.right{ display:flex; gap:8px; justify-content:flex-end; }
+.row.add{ display:flex; gap:8px; align-items:center; margin:6px 0 10px; }
+.mem-list{ display:flex; flex-direction:column; gap:8px; max-height:48vh; overflow:auto; }
+.mem-row{
+  display:flex; gap:8px; align-items:center;
+  border:1px solid #eee; border-radius:10px; padding:8px;
+  background:#fff;
+}
+.footer{ color:#7a7a7a; font-size:12px; text-align:center; padding:12px 0 18px; }
 
 /* ===== responsive columns ===== */
 /* 태블릿: 5칸 */
 @media (max-width: 980px){
-  .grid{ grid-template-columns: repeat(5, minmax(0,1fr)); }
+  .grid{ grid-template-columns: repeat(5, 1fr); }
 }
 /* 작은 태블릿/큰 폰: 4칸 */
 @media (max-width: 760px){
   #monthLabel{ font-size:18px; }
-  .grid{ grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .grid{ grid-template-columns: repeat(4, 1fr); }
 }
-/* 일반 폰: 3칸 + 라벨/여백 조정 */
+/* 일반 폰: 3칸 + 여유 ↑ */
 @media (max-width: 560px){
-  .grid{ grid-template-columns: repeat(3, minmax(0,1fr)); }
-  .tile{ min-height:clamp(112px, 30vw, 160px); }
-  .line span{ display:none; }      /* '불가' 글자는 모바일에서 생략 */
-  .head .dow{ font-size:11px; }
+  .grid{ grid-template-columns: repeat(3, 1fr); }
+  .day{ min-height:clamp(140px, 34vw, 210px); }
+  .line span{ display:none; }   /* '이 날짜 불가' 텍스트는 모바일에서 감춤 */
+  .day__dow{ font-size:11px; }
   button{ font-size:13px; }
 }
-/* 아주 작은 폰: 2칸 */
+/* 아주 작은 폰: 2칸 + 더 여유 */
 @media (max-width: 380px){
-  .grid{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .grid{ grid-template-columns: repeat(2, 1fr); }
+  .day{ min-height:clamp(152px, 40vw, 220px); }
 }

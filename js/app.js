@@ -1,5 +1,5 @@
 // ====== 설정 ======
-const GAS_URL = "https://script.google.com/macros/s/AKfycbz6DTN6_KL2HHONc8iMmOpsa4x9o5fULRdU90my59qFplXM7uhSQoVMs_ngLoxYryyc/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzOamUTMwYZhqwiKhxTelQtzpItWh7-dTKqLClrDn8PBdJAmDbD7MAYg33KK-Qu8kfn/exec";
 
 // 깃허브페이지 하위경로(/Schedule-ver) 포함 origin 전송
 function repoBase() {

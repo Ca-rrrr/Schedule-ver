@@ -16,7 +16,6 @@ async function apiGet(params) {
 async function apiPost(body) {
   const res = await fetch(GAS_URL + "?" + withOrigin(), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
   return res.json();

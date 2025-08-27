@@ -95,6 +95,26 @@ function summarizeByDate(rows){
   return map;
 }
 
+const CACHE_TTL = 60 * 1000; // 60초
+
+function readCache(key){
+  try{
+    const raw = localStorage.getItem(key);
+    if(!raw) return null;
+    const obj = JSON.parse(raw);
+    if(!obj || !obj.ts || (Date.now()-obj.ts) > CACHE_TTL) return null;
+    return obj.data;
+  }catch(_){ return null; }
+}
+function writeCache(key, data){
+  try{
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  }catch(_){}
+}
+function monthKey(d){
+  return `month_${d.getFullYear()}_${d.getMonth()+1}`;
+}
+
 function applyToggleLocal(dateStr, name, isUnavail) {
   const idx = monthRows.findIndex(r => r.date === dateStr && r.member_name === name);
   if (isUnavail) {
@@ -132,12 +152,31 @@ function applySaveDayLocal(dateStr, name, isUnavail, note) {
 
 // ====== 멤버 로드 & 드롭다운 ======
 async function loadMembers(){
+  // 1) 캐시 먼저
+  const cached = readCache('members');
+  if (cached) {
+    members = cached;
+    totalMembers = members.length || 0;
+
+    sel.innerHTML = "";
+    for (const m of members){
+      const opt = document.createElement('option');
+      opt.value = m.name;
+      opt.textContent = `${m.color || ''} ${m.name}`.trim();
+      sel.appendChild(opt);
+    }
+    if (!selectedMember && members.length) selectedMember = members[0].name;
+    sel.value = selectedMember || "";
+  }
+
+  // 2) 신선 데이터로 갱신
   const r = await apiGet({ action: "members" });
   if (!r.ok) throw new Error(r.error || "members failed");
+
   members = r.data || [];
   totalMembers = members.length || 0;
+  writeCache('members', members);
 
-  // 옵션 채우기
   sel.innerHTML = "";
   for (const m of members){
     const opt = document.createElement('option');
@@ -149,16 +188,31 @@ async function loadMembers(){
   sel.value = selectedMember || "";
 }
 
+
 // ====== 월 데이터 로드 & 그리드 ======
 async function loadMonth(){
+  const key = monthKey(cur);
+
+  // 1) 캐시 먼저 렌더
+  const cached = readCache(key);
+  if (cached){
+    monthRows = cached;
+    dateSummary = summarizeByDate(monthRows);
+    renderGrid();
+  }
+
+  // 2) 신선 데이터로 갱신
   const y = cur.getFullYear();
   const m = cur.getMonth()+1;
   const r = await apiGet({ action:"month", year:y, month:m });
   if (!r.ok) throw new Error(r.error || "month failed");
+
   monthRows = r.data || [];
   dateSummary = summarizeByDate(monthRows);
+  writeCache(key, monthRows);
   renderGrid();
 }
+
 
 // ====== 타일 생성 (디자인 적용) ======
 function buildDayTile(d, inMonth){
@@ -345,10 +399,10 @@ sel.onchange = async (e) => { selectedMember = e.target.value || ""; await loadM
 // ====== 초기 로드 ======
 (async function init(){
   try{
-    await loadMembers();
-    await loadMonth();
+    await Promise.all([ loadMembers(), loadMonth() ]);
   }catch(err){
     console.error(err);
     alert("초기 로드 실패: " + err.message);
   }
 })();
+

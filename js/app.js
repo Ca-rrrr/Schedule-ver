@@ -52,6 +52,9 @@ let cur = new Date();      // 현재 표시 월
 let totalMembers = 0;
 let dateSummary = new Map(); // key: 'YYYY-MM-DD' -> {unavail, notes, rows:[]}
 
+// ====== '확정' 판정 태그 ======
+const CONFIRM_NOTE_TAGS = ['확정', '✅', '[확정]'];
+
 // ====== 엘리먼트 ======
 const monthLabel = document.getElementById('monthLabel');
 const grid = document.getElementById('grid');
@@ -66,6 +69,7 @@ const noteBox = document.getElementById('noteBox');
 const btnSaveNote = document.getElementById('btnSaveNote');
 const btnCloseDay = document.getElementById('btnCloseDay');
 
+// 멤버 관리
 const memDlg = document.getElementById('memDlg');
 const memList = document.getElementById('memList');
 const newEmoji = document.getElementById('newEmoji');
@@ -115,6 +119,63 @@ function summarizeByDate(rows){
   return map;
 }
 
+// ====== 미니 달력: 확정 집계 + 렌더 ======
+function confirmedDateSet(){
+  const set = new Set();
+  for (const r of monthRows){
+    const note = String(r.note || '');
+    if (CONFIRM_NOTE_TAGS.some(tag => note.includes(tag))) {
+      set.add(String(r.date).slice(0,10));
+    }
+  }
+  return set;
+}
+
+function renderMiniCal(){
+  const wrap = document.getElementById('miniCal');
+  if (!wrap) return;
+
+  const weeks = monthDates(cur);
+  const month = cur.getMonth();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const confirmed = confirmedDateSet();
+
+  // 요일 헤더
+  const dows = ['일','월','화','수','목','금','토'];
+  wrap.innerHTML = '';
+  for (const d of dows){
+    const h = document.createElement('div');
+    h.className = 'mc-dow';
+    h.textContent = d;
+    wrap.appendChild(h);
+  }
+
+  // 날짜 셀
+  for (const wk of weeks){
+    for (const d of wk){
+      const dStr = ymd(d);
+      const cell = document.createElement('div');
+      cell.className = 'mc-cell';
+      if (d.getMonth() !== month) cell.classList.add('dim');
+      if (d.getTime() === today.getTime()) cell.classList.add('today');
+      if (confirmed.has(dStr)) {
+        cell.classList.add('confirmed');
+        const dot = document.createElement('i'); dot.className = 'dot';
+        cell.appendChild(dot);
+      }
+      cell.textContent = d.getDate();
+
+      // 클릭 → 메인 캘린더 해당 날짜로 스크롤
+      cell.addEventListener('click', () => {
+        const target = document.querySelector(`.day[data-date="${dStr}"]`);
+        target?.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
+      });
+
+      wrap.appendChild(cell);
+    }
+  }
+}
+
 // ====== 멤버 셀렉트 채우기 ======
 function populateMemberSelect() {
   sel.innerHTML = "";
@@ -138,6 +199,7 @@ function buildDayTile(d, inMonth){
   // 루트
   const el = document.createElement('div');
   el.className = 'day';
+  el.dataset.date = dStr; // 미니 달력 스크롤 타겟용
   if (!inMonth) el.classList.add('muted');
   if (inMonth && sum.unavail === 0) el.classList.add('ok');               // ✅ 모두 가능
   if (myRow?.status === '❌') el.classList.add('unavail-me');             // 내가 ❌
@@ -172,7 +234,7 @@ function buildDayTile(d, inMonth){
   btn.className = 'thin';
   btn.textContent = '메모';
 
-  // ---- [추가] 로컬 상태 즉시 반영 유틸 ----
+  // ---- 로컬 상태 즉시 반영 유틸 ----
   function applyToggleLocal(dateStr, name, isUnavail) {
     const idx = monthRows.findIndex(r => r.date === dateStr && r.member_name === name);
     if (isUnavail) {
@@ -194,7 +256,7 @@ function buildDayTile(d, inMonth){
 
     // 1) 즉시 반영
     applyToggleLocal(dStr, selectedMember, newVal);
-    renderGrid();
+    renderGrid(); renderMiniCal();
 
     // 2) 백그라운드 저장
     apiPost({ action:'toggleUnavailable', date: dStr, member_name:selectedMember, is_unavail: newVal })
@@ -205,7 +267,7 @@ function buildDayTile(d, inMonth){
       .catch(err => {
         // 실패: 되돌림
         applyToggleLocal(dStr, selectedMember, !newVal);
-        renderGrid();
+        renderGrid(); renderMiniCal();
         alert('불가 저장 실패: ' + (err?.message || err));
       })
       .finally(() => { cb.disabled = false; });
@@ -243,7 +305,7 @@ function openDayDialog(d){
 }
 btnCloseDay.onclick = () => dayDlg.close();
 
-// ---- [추가] 메모+토글 로컬 반영 유틸 ----
+// ---- 메모+토글 로컬 반영 유틸 ----
 function applySaveDayLocal(dateStr, name, isUnavail, note) {
   const idx = monthRows.findIndex(r => r.date === dateStr && r.member_name === name);
   const trimmed = (note || '').trim();
@@ -267,7 +329,7 @@ btnSaveNote.onclick = async () => {
 
   // 1) 즉시 반영 + 닫기
   applySaveDayLocal(date, selectedMember, isUnavail, note);
-  renderGrid();
+  renderGrid(); renderMiniCal();
   btnSaveNote.disabled = true; btnSaveNote.textContent = '저장중…';
   dayDlg.close();
 
@@ -369,7 +431,7 @@ async function loadMonth(){
   if (!r.ok) throw new Error(r.error || "month failed");
   monthRows = r.data || [];
   dateSummary = summarizeByDate(monthRows);
-  renderGrid();
+  renderGrid(); renderMiniCal();
   saveCache(keyMonth(y,m), monthRows);
 }
 
@@ -389,7 +451,7 @@ async function loadMonth(){
     }
     if (monCached) {
       monthRows = monCached; dateSummary = summarizeByDate(monthRows);
-      renderGrid();
+      renderGrid(); renderMiniCal();
     }
 
     // 2) 최신 데이터 병렬로 가져와서 교체
@@ -408,7 +470,7 @@ async function loadMonth(){
     if (r2.ok) {
       monthRows = r2.data || [];
       dateSummary = summarizeByDate(monthRows);
-      renderGrid();
+      renderGrid(); renderMiniCal();
       saveCache(keyMonth(y,m), monthRows);
     }
   }catch(err){

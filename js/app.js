@@ -95,6 +95,41 @@ function summarizeByDate(rows){
   return map;
 }
 
+function applyToggleLocal(dateStr, name, isUnavail) {
+  const idx = monthRows.findIndex(r => r.date === dateStr && r.member_name === name);
+  if (isUnavail) {
+    if (idx >= 0) { monthRows[idx].status = '❌'; }
+    else { monthRows.push({ date: dateStr, member_name: name, status:'❌', note:'' }); }
+  } else {
+    if (idx >= 0) {
+      const note = (monthRows[idx].note || '').trim();
+      if (note === '') monthRows.splice(idx, 1);   // 모두 빈값이면 행 삭제(서버 로직과 동일)
+      else monthRows[idx].status = '';
+    }
+  }
+  dateSummary = summarizeByDate(monthRows);
+}
+
+// ---- [추가] 메모+토글 로컬 반영 유틸 ----
+function applySaveDayLocal(dateStr, name, isUnavail, note) {
+  const idx = monthRows.findIndex(r => r.date === dateStr && r.member_name === name);
+  const trimmed = (note || '').trim();
+
+  if (idx >= 0) {
+    monthRows[idx].status = isUnavail ? '❌' : '';
+    monthRows[idx].note = trimmed;
+    // 둘 다 빈 값이면 행 삭제(서버 로직과 동일)
+    if (!isUnavail && trimmed === '') monthRows.splice(idx, 1);
+  } else {
+    // 없던 행인데 뭔가 값이 있으면 추가
+    if (isUnavail || trimmed !== '') {
+      monthRows.push({ date: dateStr, member_name: name, status: isUnavail ? '❌' : '', note: trimmed });
+    }
+  }
+  dateSummary = summarizeByDate(monthRows);
+}
+
+
 // ====== 멤버 로드 & 드롭다운 ======
 async function loadMembers(){
   const r = await apiGet({ action: "members" });
@@ -169,10 +204,22 @@ function buildDayTile(d, inMonth){
   btn.className = 'thin';
   btn.textContent = '메모';
 
-  cb.addEventListener('change', async () => {
-    await apiPost({ action:'toggleUnavailable', date: dStr, member_name:selectedMember, is_unavail: cb.checked });
-    await loadMonth();
+  cb.addEventListener('change', () => {
+    const newVal = cb.checked;
+  
+    // 1) 즉시 반영(화면 먼저 업데이트)
+    applyToggleLocal(dStr, selectedMember, newVal);
+    renderGrid();
+  
+    // 2) 백그라운드 저장(실패 시 되돌림)
+    apiPost({ action:'toggleUnavailable', date: dStr, member_name:selectedMember, is_unavail: newVal })
+      .catch(err => {
+        applyToggleLocal(dStr, selectedMember, !newVal); // 되돌리기
+        renderGrid();
+        alert('불가 저장 실패: ' + (err?.message || err));
+      });
   });
+
   btn.addEventListener('click', () => openDayDialog(d));
 
   actions.append(wrap, btn);
@@ -204,13 +251,37 @@ function openDayDialog(d){
   dayDlg.showModal();
 }
 btnCloseDay.onclick = () => dayDlg.close();
-btnSaveNote.onclick = async () => {
+// ---- [교체] 저장 버튼 핸들러 (즉시 반영 + 병렬 저장) ----
+btnSaveNote.onclick = () => {
   const date = dayDlg.dataset.date;
-  await apiPost({ action:'toggleUnavailable', date, member_name:selectedMember, is_unavail: chkUnavail.checked });
-  await apiPost({ action:'saveNote', date, member_name:selectedMember, note: noteBox.value });
+  const isUnavail = chkUnavail.checked;
+  const note = noteBox.value;
+
+  // 1) 로컬 즉시 반영 + UI 업데이트
+  applySaveDayLocal(date, selectedMember, isUnavail, note);
+  renderGrid();
+
+  // 2) 버튼 상태 표시 & 다이얼로그 닫기
+  btnSaveNote.disabled = true;
+  btnSaveNote.textContent = '저장중…';
   dayDlg.close();
-  await loadMonth();
+
+  // 3) 서버 저장을 병렬로 수행
+  Promise.all([
+    apiPost({ action:'toggleUnavailable', date, member_name: selectedMember, is_unavail: isUnavail }),
+    apiPost({ action:'saveNote', date, member_name: selectedMember, note })
+  ])
+  .catch(err => {
+    alert('메모 저장 실패: ' + (err?.message || err));
+    // 서버와 차이가 생겼을 수 있으니 동기화
+    loadMonth();
+  })
+  .finally(() => {
+    btnSaveNote.disabled = false;
+    btnSaveNote.textContent = '저장';
+  });
 };
+
 
 // ====== 멤버 관리 모달 ======
 function fillEmojiSelect(selEl, val){

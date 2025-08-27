@@ -4,11 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>일정간단 ver</title>
-  <!-- 캐시 무효화를 위해 v=8 이상으로 -->
+
+  <!-- A) Google Apps Script로 미리 연결 -->
+  <link rel="preconnect" href="https://script.google.com" crossorigin>
+  <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
+  <link rel="dns-prefetch" href="//script.google.com">
+  <link rel="dns-prefetch" href="//script.googleusercontent.com">
+
+  <!-- 캐시 무효화를 위해 v 숫자 올려주기 -->
   <link rel="stylesheet" href="css/style.css?v=8" />
   <script defer src="js/app.js?v=8"></script>
 </head>
 <body>
+  <!-- 이하 동일 -->
   <header class="topbar">
     <div class="nav">
       <button id="prevBtn">◀</button>

@@ -131,6 +131,24 @@ function confirmedDateSet(){
   return set;
 }
 
+// ▼ 추가: 전원 가능(OK) 날짜 집합
+function okDateSet(){
+  const set = new Set();
+  if (totalMembers <= 0) return set;
+
+  const first = firstOfMonth(cur);
+  const month = first.getMonth();
+  const start = new Date(first); start.setDate(1 - start.getDay()); // 일요일 시작 기준 6주(42칸)
+  for (let i=0; i<42; i++){
+    const d = new Date(start); d.setDate(start.getDate() + i);
+    if (d.getMonth() !== month) continue;
+    const key = ymd(d);
+    const s = dateSummary.get(key);          // 데이터가 없으면 unavail=0으로 간주
+    if (!s || s.unavail === 0) set.add(key); // 아무도 ❌ 없으면 OK
+  }
+  return set;
+}
+
 function renderMiniCal(){
   const wrap = document.getElementById('miniCal');
   if (!wrap) return;
@@ -138,7 +156,9 @@ function renderMiniCal(){
   const weeks = monthDates(cur);
   const month = cur.getMonth();
   const today = new Date(); today.setHours(0,0,0,0);
+
   const confirmed = confirmedDateSet();
+  const ok = okDateSet(); // ▼ 전원 가능 날짜
 
   // 요일 헤더
   const dows = ['일','월','화','수','목','금','토'];
@@ -158,11 +178,15 @@ function renderMiniCal(){
       cell.className = 'mc-cell';
       if (d.getMonth() !== month) cell.classList.add('dim');
       if (d.getTime() === today.getTime()) cell.classList.add('today');
-      if (confirmed.has(dStr)) {
+
+      // ▼ OK/확정 표시
+      if (ok.has(dStr)) cell.classList.add('ok');                       // 전원 가능
+      if (confirmed.has(dStr)) {                                        // 확정
         cell.classList.add('confirmed');
         const dot = document.createElement('i'); dot.className = 'dot';
         cell.appendChild(dot);
       }
+
       cell.textContent = d.getDate();
 
       // 클릭 → 메인 캘린더 해당 날짜로 스크롤
@@ -175,6 +199,7 @@ function renderMiniCal(){
     }
   }
 }
+
 
 // ====== 멤버 셀렉트 채우기 ======
 function populateMemberSelect() {

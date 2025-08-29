@@ -119,6 +119,20 @@ function getOthersForDate(dateStr, exceptName){
     }))
     .sort((a,b) => (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
 }
+
+function notePreviewForDate(dateStr){
+  const rows = (dateSummary.get(dateStr)?.rows) || [];
+  const emojiMap = new Map(members.map(m => [m.name, m.color || ""]));
+  return rows
+    .filter(r => (String(r.note||"").trim() !== "") || String(r.status||"") === "❌")
+    .map(r => ({
+      name: r.member_name,
+      emoji: emojiMap.get(r.member_name) || "",
+      text: String(r.note||"").trim(),
+      isUnavail: String(r.status||"") === "❌"
+    }))
+    .sort((a,b) => (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
+}
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -259,6 +273,34 @@ function buildDayTile(d, inMonth){
     </div>
   `;
   el.appendChild(head);
+  // --- 메모 미리보기(최대 3줄; 모바일은 2줄) ---
+  const previews = notePreviewForDate(dStr);
+  if (previews.length) {
+    const pv = document.createElement('div');
+    pv.className = 'day__preview';
+  
+    const limit = (window.innerWidth <= 560) ? 2 : 3;  // 모바일 2줄, 데스크톱 3줄
+    previews.slice(0, limit).forEach(p => {
+      const line = document.createElement('div');
+      line.className = 'pvline';
+      const who = `${p.emoji ? (p.emoji + ' ') : ''}${escapeHtml(p.name)}`;
+      const text = p.text || (p.isUnavail ? '[불가]' : '');
+      line.innerHTML = `
+        <span class="pv-who">${who}${p.isUnavail ? '<span class="pv-tag">❌</span>' : ''}</span>
+        <span class="pv-text">${escapeHtml(text)}</span>
+      `;
+      pv.appendChild(line);
+    });
+  
+    if (previews.length > limit) {
+      const more = document.createElement('div');
+      more.className = 'pv-more';
+      more.textContent = `외 ${previews.length - limit}건`;
+      pv.appendChild(more);
+    }
+  
+    el.appendChild(pv);  // actions 전에 미리보기 삽입
+  }
 
   // 하단 액션
   const actions = document.createElement('div');

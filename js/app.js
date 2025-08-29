@@ -119,20 +119,6 @@ function getOthersForDate(dateStr, exceptName){
     }))
     .sort((a,b) => (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
 }
-
-function notePreviewForDate(dateStr){
-  const rows = (dateSummary.get(dateStr)?.rows) || [];
-  const emojiMap = new Map(members.map(m => [m.name, m.color || ""]));
-  return rows
-    .filter(r => (String(r.note||"").trim() !== "") || String(r.status||"") === "❌")
-    .map(r => ({
-      name: r.member_name,
-      emoji: emojiMap.get(r.member_name) || "",
-      text: String(r.note||"").trim(),
-      isUnavail: String(r.status||"") === "❌"
-    }))
-    .sort((a,b) => (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
-}
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -273,33 +259,43 @@ function buildDayTile(d, inMonth){
     </div>
   `;
   el.appendChild(head);
-  // --- 메모 미리보기(최대 3줄; 모바일은 2줄) ---
-  const previews = notePreviewForDate(dStr);
+
+  // --- 메모 미리보기(모바일 2줄 / 데스크톱 3줄) ---
+  const previews = (dateSummary.get(dStr)?.rows || [])
+    .filter(r => (String(r.note||"").trim() !== "") || String(r.status||"") === "❌")
+    .map(r => ({
+      name: r.member_name,
+      emoji: (members.find(m => m.name === r.member_name)?.color) || "",
+      text: String(r.note||"").trim(),
+      isUnavail: String(r.status||"") === "❌"
+    }))
+    .sort((a,b) => (b.text ? 1:0) - (a.text ? 1:0) || (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
+
   if (previews.length) {
     const pv = document.createElement('div');
     pv.className = 'day__preview';
-  
-    const limit = (window.innerWidth <= 560) ? 2 : 3;  // 모바일 2줄, 데스크톱 3줄
+
+    const limit = (window.innerWidth <= 560) ? 2 : 3;
     previews.slice(0, limit).forEach(p => {
       const line = document.createElement('div');
       line.className = 'pvline';
       const who = `${p.emoji ? (p.emoji + ' ') : ''}${escapeHtml(p.name)}`;
-      const text = p.text || (p.isUnavail ? '[불가]' : '');
+      // 메모가 있으면 메모 텍스트를, 없으면 이름+❌만 보여줌 (불필요한 [불가] 텍스트 제거)
       line.innerHTML = `
-        <span class="pv-who">${who}${p.isUnavail ? '<span class="pv-tag">❌</span>' : ''}</span>
-        <span class="pv-text">${escapeHtml(text)}</span>
+        <span class="pv-who">${who}${p.isUnavail ? ' <span class="pv-tag">❌</span>' : ''}</span>
+        ${p.text ? `<span class="pv-text">${escapeHtml(p.text)}</span>` : ''}
       `;
       pv.appendChild(line);
     });
-  
+
     if (previews.length > limit) {
       const more = document.createElement('div');
       more.className = 'pv-more';
       more.textContent = `외 ${previews.length - limit}건`;
       pv.appendChild(more);
     }
-  
-    el.appendChild(pv);  // actions 전에 미리보기 삽입
+
+    el.appendChild(pv);
   }
 
   // 하단 액션
@@ -551,11 +547,8 @@ async function checkLiveOnce(){
   }catch(_){ /* 네트워크 에러 무시 */ }
 }
 function startLive(){
-  // 기존 타이머 정리
   if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
-  // 최초 기준점
   refreshVersionBaseline();
-
   const loop = async () => {
     const interval = document.hidden ? 15000 : 6000; // 백그라운드 시 느리게
     await checkLiveOnce();
@@ -563,7 +556,6 @@ function startLive(){
   };
   liveTimer = setTimeout(loop, document.hidden ? 15000 : 6000);
 }
-// 탭 표시/숨김 바뀌면 폴링 간격 갱신
 document.addEventListener('visibilitychange', () => {
   if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; startLive(); }
 });

@@ -103,6 +103,50 @@ button:active{ transform:translateY(1px); }
   padding:.32rem .5rem; font-size:13px;
   border:1px solid #e1def2; background:#fff; border-radius:10px;
 }
+/* ===== day tile - memo preview ===== */
+.day__preview{
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pvline{
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.25;
+}
+.pv-who{
+  flex: none;
+  font-weight: 700;
+  color: #5743a1;
+}
+.pv-tag{        /* ❌ 배지 */
+  margin-left: 2px;
+  font-size: 12px;
+  color: #c0392b;
+}
+.pv-text{
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis; /* 긴 메모는 말줄임 */
+  color: #333;
+}
+.pv-more{
+  font-size: 12px;
+  color: #666;
+}
+
+/* OK(전원 가능) 타일에서도 읽기 좋게 */
+.day.ok .pv-text{ color:#1f3d1f; }
+
+/* 모바일에선 살짝 작고 2줄만 */
+@media (max-width:560px){
+  .pvline{ font-size:12px; }
+}
 
 /* =========================
    Dialogs & member list

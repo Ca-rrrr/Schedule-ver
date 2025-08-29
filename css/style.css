@@ -125,6 +125,47 @@ button:active{ transform:translateY(1px); }
 
 .footer{ color:#7a7a7a; font-size:12px; text-align:center; padding:12px 0 18px; }
 
+/* ===== others (다른 멤버 메모) ===== */
+.others{
+  margin: 12px 0 8px;
+  padding: 10px 10px 6px;
+  background:#faf7ff;
+  border:1px solid #ede6ff;
+  border-radius: 12px;
+}
+.others-hd{
+  font-size: 13px;
+  color:#6f59b8;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.others-list{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  max-height: 36vh;
+  overflow:auto;
+}
+.onote{
+  background:#fff;
+  border:1px solid #eee;
+  border-radius:10px;
+  padding:8px;
+}
+.onote__who{
+  font-weight:700;
+  font-size:13px;
+  margin-bottom:4px;
+  color:#5743a1;
+}
+.onote__text{
+  font-size:13px;
+  color:#333;
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+
+
 /* =========================
    Mini calendar (header 안 #miniCal)
    ========================= */

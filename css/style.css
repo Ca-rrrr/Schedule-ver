@@ -11,6 +11,9 @@
   --gap:10px;
   --radius:16px;
   --shadow:0 1px 0 rgba(0,0,0,.03), 0 8px 24px rgba(124,92,250,.06);
+  --confirm:#3b82f6;
+  --confirm-soft:#e0f2fe;
+  --confirm-line:#93c5fd; 
 }
 
 *{ box-sizing:border-box; }
@@ -81,6 +84,10 @@ button:active{ transform:translateY(1px); }
   /* 테두리 링 굵게 & 진하게 */
   box-shadow: var(--shadow), 0 0 0 2px #8ed98e;
 }
+.day.ok.confirmed{
+  background: linear-gradient(180deg, #f0f7ff 0%, #e6f0ff 100%);
+  box-shadow: var(--shadow), 0 0 0 2px var(--confirm-line);
+}
 .day.today{ outline:2px solid var(--accent); outline-offset:-2px; }
 .day.unavail-me{
   background:#fff7f7;
@@ -95,6 +102,11 @@ button:active{ transform:translateY(1px); }
 .badge{
   font-size:12px; line-height:1;
   padding:.22rem .38rem; border-radius:999px; background:#f4f2ff; border:1px solid #e7e2ff;
+}
+.badge.confirm{
+  background: var(--confirm-soft);
+  border:1px solid var(--confirm-line);
+  color:#1d4ed8;
 }
 .badge.note{ background:#fff7e8; border-color:#ffe1b3; }
 .badge.ok{ background:#ecfff1; border-color:#bfe5bf; }
@@ -245,11 +257,16 @@ details.others[open] > summary::before{ content:"▾"; }
   border-color:#88db88;
   box-shadow: inset 0 0 0 2px #a6e3a6;
 }
-/* OK + 확정 동시 = 보라 테두리 강조 */
 .mini-cal .mc-cell.ok.confirmed{
-  box-shadow: inset 0 0 0 2px var(--accent);
+  /* 확정이면 초록 대신 파랑으로 강조 */
+  background:#eef6ff;
+  border-color: var(--confirm-line);
+  box-shadow: inset 0 0 0 2px var(--confirm);
 }
-
+.mini-cal .mc-cell.confirmed .dot{
+  top:4px; bottom:auto;
+  background: var(--confirm);
+}
 .mini-cal .mc-cell .dot{
   position:absolute; right:4px; bottom:3px;
   width:6px; height:6px; border-radius:50%;

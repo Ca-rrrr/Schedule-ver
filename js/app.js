@@ -52,13 +52,17 @@ let totalMembers = 0;
 let dateSummary = new Map(); // key: 'YYYY-MM-DD' -> {unavail, notes, rows:[]}
 let confirmedDates = new Set(); // 확정 날짜(이 달)
 
+// ====== 연/월 드롭다운 범위 설정 ======
+// 이 값만 바꾸면 드롭다운/화살표가 이동 가능한 범위가 바뀜
+const YM_MIN   = '2025-08'; // 시작 월(포함) 'YYYY-MM'
+const YM_COUNT = 24;        // 앞으로 보여줄 개월 수
+
 // ====== 엘리먼트 ======
 const monthLabel = document.getElementById('monthLabel');
 const grid = document.getElementById('grid');
 grid && grid.classList.add('grid');
 const sel = document.getElementById('memberSelect');
-// 새로 추가: 연/월 드롭다운
-const ymSelect = document.getElementById('ymSelect');
+const ymSelect = document.getElementById('ymSelect'); // 연/월 드롭다운
 
 // (있다면) 확정모드 버튼
 const confirmModeBtn = document.getElementById('confirmModeBtn');
@@ -93,6 +97,17 @@ function findRow(dateStr, name){
   return monthRows.find(r => r.date === dateStr && r.member_name === name);
 }
 
+// ---- YM 범위 유틸 ----
+function ymToDate(ym){ const [y,m]=ym.split('-').map(Number); return new Date(y, m-1, 1); }
+const YM_MIN_DATE = ymToDate(YM_MIN);
+const YM_MAX_DATE = addMonths(YM_MIN_DATE, YM_COUNT-1);
+function ymNum(d){ return d.getFullYear()*100 + (d.getMonth()+1); }
+function clampCurToRange(){
+  const n = ymNum(cur);
+  if (n < ymNum(YM_MIN_DATE)) cur = new Date(YM_MIN_DATE);
+  if (n > ymNum(YM_MAX_DATE)) cur = new Date(YM_MAX_DATE);
+}
+
 // ---- 다른 멤버 메모/상태 헬퍼 + escape ----
 function getOthersForDate(dateStr, exceptName){
   const colorMap = new Map(members.map(m => [m.name, m.color || ""]));
@@ -102,7 +117,7 @@ function getOthersForDate(dateStr, exceptName){
   const by = new Map();
   for (const r of rows){
     const name = r.member_name;
-    const note = String(r.note || '').trim();
+       const note = String(r.note || '').trim();
     const isUnavail = String(r.status || '') === '❌';
 
     const prev = by.get(name) || { name, emoji: colorMap.get(name) || "", note: "", isUnavail: false };
@@ -257,33 +272,35 @@ function populateMemberSelect() {
 }
 
 // ====== 연/월 드롭다운 ======
-function buildYMOptions(center = cur){
+function buildYMOptions(){
   if (!ymSelect) return;
   ymSelect.innerHTML = '';
-  // center 기준 ±18개월(총 37개) — 필요하면 숫자 조절
-  for (let i=-18; i<=18; i++){
-    const d = addMonths(center, i);
+  for (let i=0; i<YM_COUNT; i++){
+    const d = addMonths(YM_MIN_DATE, i);
     const opt = document.createElement('option');
     opt.value = ymKey(d);
     opt.textContent = `${d.getFullYear()}년 ${d.getMonth()+1}월`;
     ymSelect.appendChild(opt);
   }
+  // 현재가 범위 밖이면 보정
+  clampCurToRange();
   ymSelect.value = ymKey(cur);
 }
 function ensureYMOptionHasCurrent(){
   if (!ymSelect) return;
+  clampCurToRange();
   const v = ymKey(cur);
   if (![...ymSelect.options].some(o => o.value === v)) {
-    buildYMOptions(cur);
-  } else {
-    ymSelect.value = v;
+    buildYMOptions();
   }
+  ymSelect.value = v;
 }
 ymSelect && (ymSelect.onchange = async (e) => {
   const v = String(e.target.value || '');
   const m = v.match(/^(\d{4})-(\d{2})$/);
   if (!m) return;
   cur = new Date(Number(m[1]), Number(m[2])-1, 1);
+  clampCurToRange();
   await loadMonth();
   refreshVersionBaseline();
 });
@@ -586,6 +603,7 @@ let curVer = { members: null, month: null };
 let liveTimer = null;
 
 async function fetchVersion(){
+  clampCurToRange();
   const y = cur.getFullYear();
   const m = cur.getMonth()+1;
   const r = await apiGet({ action:'version', year:y, month:m });
@@ -627,11 +645,13 @@ document.addEventListener('visibilitychange', () => {
 // ====== 상단 버튼 & 드롭다운 ======
 document.getElementById('prevBtn')?.addEventListener('click', async () => {
   cur = addMonths(cur, -1);
+  clampCurToRange();                 // ← 범위 밖 이동 방지
   await loadMonth();
   refreshVersionBaseline();
 });
 document.getElementById('nextBtn')?.addEventListener('click', async () => {
   cur = addMonths(cur, 1);
+  clampCurToRange();                 // ← 범위 밖 이동 방지
   await loadMonth();
   refreshVersionBaseline();
 });
@@ -660,6 +680,7 @@ async function loadMembers(){
 }
 
 async function loadMonth(){
+  clampCurToRange();
   const y = cur.getFullYear();
   const m = cur.getMonth()+1;
 
@@ -686,11 +707,14 @@ async function loadMonth(){
 // ====== 최초 부팅 (병렬 + 캐시 우선) ======
 (async function boot(){
   try{
+    // 현재 월을 드롭다운 범위로 보정
+    clampCurToRange();
+
+    // 드롭다운 초기 구성(범위 기반)
+    buildYMOptions();
+
     const y = cur.getFullYear();
     const m = cur.getMonth()+1;
-
-    // 드롭다운 초기 구성(현재 기준)
-    buildYMOptions(cur);
 
     // 1) 캐시 있으면 즉시 그리기
     const memCached = loadCache(KEY_MEM);

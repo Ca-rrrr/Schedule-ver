@@ -231,19 +231,25 @@ function populateMemberSelect() {
 }
 
 // ====== 타일 생성 (디자인 적용 + 옵티미스틱 반영) ======
-function buildDayTile(d, inMonth){
+function buildDayTile(d, inMonth, confirmedSet){
   const dStr = ymd(d);
   const sum = dateSummary.get(dStr) || {unavail:0, notes:0, rows:[]};
   const yesCount = Math.max(totalMembers - sum.unavail, 0);
   const myRow = findRow(dStr, selectedMember);
 
-  // 루트
   const el = document.createElement('div');
   el.className = 'day';
-  el.dataset.date = dStr; // 미니 달력 스크롤 타겟용
+  el.dataset.date = dStr;
+
   if (!inMonth) el.classList.add('muted');
-  if (inMonth && sum.unavail === 0) el.classList.add('ok');               // ✅ 모두 가능
-  if (myRow?.status === '❌') el.classList.add('unavail-me');             // 내가 ❌
+
+  const isOk = inMonth && sum.unavail === 0;
+  if (isOk) el.classList.add('ok');
+
+  const isConfirmed = isOk && confirmedSet && confirmedSet.has(dStr); // “가능”이면서 확정
+  if (isConfirmed) el.classList.add('confirmed');
+
+  if (myRow?.status === '❌') el.classList.add('unavail-me');
   const today = new Date(); today.setHours(0,0,0,0);
   if (d.getTime() === today.getTime()) el.classList.add('today');
 
@@ -256,6 +262,7 @@ function buildDayTile(d, inMonth){
     <div class="badges">
       <span class="badge ok">☺️${yesCount}</span>
       ${sum.notes > 0 ? `<span class="badge note">📝${sum.notes}</span>` : ''}
+      ${isConfirmed ? `<span class="badge confirm">확정</span>` : ''}   <!-- ← 추가 -->
     </div>
   `;
   el.appendChild(head);
@@ -364,11 +371,12 @@ function buildDayTile(d, inMonth){
 function renderGrid(){
   monthLabel.textContent = `${cur.getFullYear()}년 ${cur.getMonth()+1}월`;
   grid.innerHTML = "";
+  const confirmed = confirmedDateSet(); 
   const weeks = monthDates(cur);
   for (const wk of weeks){
     for (const d of wk){
       const inMonth = (d.getMonth() === cur.getMonth());
-      grid.appendChild(buildDayTile(d, inMonth));
+      grid.appendChild(buildDayTile(d, inMonth, confirmed));
     }
   }
 }

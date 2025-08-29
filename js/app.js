@@ -195,11 +195,10 @@ function renderMiniCal(){
       if (d.getMonth() !== month) cell.classList.add('dim');
       if (d.getTime() === today.getTime()) cell.classList.add('today');
 
-      // 날짜 텍스트 먼저 넣고 → dot/확정은 그 다음에 추가 (textContent가 기존 요소 지우는 문제 방지)
+      // 텍스트 먼저
       cell.textContent = d.getDate();
 
       if (ok.has(dStr)) cell.classList.add('ok'); // 전원 가능(연녹)
-
       if (confirmed.has(dStr)) {
         cell.classList.add('confirmed');
         const dot = document.createElement('i');
@@ -304,6 +303,7 @@ function buildDayTile(d, inMonth){
     apiPost({ action:'toggleUnavailable', date: dStr, member_name:selectedMember, is_unavail: newVal })
       .then(() => {
         saveCache(keyMonth(d.getFullYear(), d.getMonth()+1), monthRows);
+        refreshVersionBaseline(); // 내 액션 뒤 버전 기준 갱신
       })
       .catch(err => {
         // 실패: 되돌림
@@ -408,6 +408,7 @@ btnSaveNote.onclick = async () => {
   .then(() => {
     const d = new Date(date + "T00:00:00");
     saveCache(keyMonth(d.getFullYear(), d.getMonth()+1), monthRows);
+    refreshVersionBaseline(); // 내 액션 뒤 버전 기준 갱신
   })
   .catch(err => {
     alert('메모 저장 실패: ' + (err?.message || err));
@@ -443,6 +444,7 @@ function rebuildMemberList(){
       if (!r.ok && r.error){ alert(r.error); return; }
       invalidateCache(KEY_MEM);
       await loadMembers(); await loadMonth();
+      refreshVersionBaseline();
     };
     del.onclick = async () => {
       if (!confirm(`'${m.name}' 삭제할까요?`)) return;
@@ -451,6 +453,7 @@ function rebuildMemberList(){
       if (selectedMember === m.name) selectedMember = "";
       invalidateCache(KEY_MEM);
       await loadMembers(); await loadMonth();
+      refreshVersionBaseline();
     };
 
     row.append(em,nm,save,del);
@@ -473,12 +476,72 @@ btnAddMem.onclick = async () => {
   invalidateCache(KEY_MEM);
   await loadMembers(); await loadMonth();
   rebuildMemberList();
+  refreshVersionBaseline();
 };
 
+// ====== 라이브 동기화(버전 폴링) ======
+let curVer = { members: null, month: null };
+let liveTimer = null;
+
+async function fetchVersion(){
+  const y = cur.getFullYear();
+  const m = cur.getMonth()+1;
+  const r = await apiGet({ action:'version', year:y, month:m });
+  if (!r.ok) throw new Error(r.error || 'version failed');
+  return { members: String(r.members||''), month: String(r.month||'') };
+}
+async function refreshVersionBaseline(){
+  try {
+    const v = await fetchVersion();
+    curVer = v;
+  } catch(_) {}
+}
+async function checkLiveOnce(){
+  try{
+    const v = await fetchVersion();
+    if (curVer.members && v.members !== curVer.members) {
+      await loadMembers();
+    }
+    if (curVer.month && v.month !== curVer.month) {
+      await loadMonth();
+    }
+    curVer = v;
+  }catch(_){ /* 네트워크 에러 무시 */ }
+}
+function startLive(){
+  // 기존 타이머 정리
+  if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+  // 최초 기준점
+  refreshVersionBaseline();
+
+  const loop = async () => {
+    const interval = document.hidden ? 15000 : 6000; // 백그라운드 시 느리게
+    await checkLiveOnce();
+    liveTimer = setTimeout(loop, interval);
+  };
+  liveTimer = setTimeout(loop, document.hidden ? 15000 : 6000);
+}
+// 탭 표시/숨김 바뀌면 폴링 간격 갱신
+document.addEventListener('visibilitychange', () => {
+  if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; startLive(); }
+});
+
 // ====== 상단 버튼 & 드롭다운 ======
-document.getElementById('prevBtn').onclick = async () => { cur = addMonths(cur, -1); await loadMonth(); };
-document.getElementById('nextBtn').onclick = async () => { cur = addMonths(cur, 1); await loadMonth(); };
-document.getElementById('reloadBtn').onclick = async () => { await loadMembers(); await loadMonth(); };
+document.getElementById('prevBtn').onclick = async () => { 
+  cur = addMonths(cur, -1); 
+  await loadMonth(); 
+  refreshVersionBaseline();
+};
+document.getElementById('nextBtn').onclick = async () => { 
+  cur = addMonths(cur, 1); 
+  await loadMonth(); 
+  refreshVersionBaseline();
+};
+document.getElementById('reloadBtn').onclick = async () => { 
+  await loadMembers(); 
+  await loadMonth(); 
+  refreshVersionBaseline();
+};
 sel.onchange = async (e) => { selectedMember = e.target.value || ""; await loadMonth(); };
 
 // ====== 데이터 로더 ======
@@ -543,5 +606,8 @@ async function loadMonth(){
   }catch(err){
     console.error(err);
     alert("초기 로드 실패: " + err.message);
+  } finally {
+    // 라이브 폴링 시작
+    startLive();
   }
 })();

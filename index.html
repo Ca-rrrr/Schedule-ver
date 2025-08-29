@@ -42,29 +42,33 @@
   <!-- 날짜 상세 모달 -->
   <dialog id="dayDlg" class="dlg">
     <h3 id="dayTitle"></h3>
-
+  
     <label class="line">
       <input type="checkbox" id="chkUnavail" />
       <span>이 날짜 불가</span>
     </label>
-
+  
+    <!-- ▼ 새로 추가: 전역 확정 체크 -->
+    <label class="line">
+      <input type="checkbox" id="chkConfirmed" />
+      <span>이 날짜 확정</span>
+    </label>
+  
     <label class="line block">
       <span>메모</span>
       <textarea id="noteBox" rows="5" placeholder="부분 가능/사유 등"></textarea>
     </label>
-
-    <!-- 다른 멤버 메모: details/summary + 리스트 -->
-    <details class="others" id="othersWrap">
+  
+    <details id="othersWrap" class="others">
       <summary>다른 멤버 메모</summary>
       <div id="othersList" class="others-list"></div>
     </details>
-
+  
     <div class="right">
       <button id="btnSaveNote">저장</button>
       <button id="btnCloseDay">닫기</button>
     </div>
   </dialog>
-
   <!-- 멤버 관리 모달 -->
   <dialog id="memDlg" class="dlg">
     <h3>멤버 관리</h3>

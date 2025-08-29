@@ -105,6 +105,24 @@ function findRow(dateStr, name){
   return monthRows.find(r => r.date === dateStr && r.member_name === name);
 }
 
+// ---- 다른 멤버 메모/상태 헬퍼 + escape ----
+function getOthersForDate(dateStr, exceptName){
+  const colorMap = new Map(members.map(m => [m.name, m.color || ""]));
+  return (monthRows || [])
+    .filter(r => r.date === dateStr && r.member_name !== exceptName)
+    .filter(r => (String(r.note||"").trim() !== "") || String(r.status||"") === "❌")
+    .map(r => ({
+      name: r.member_name,
+      emoji: colorMap.get(r.member_name) || "",
+      note: String(r.note||""),
+      isUnavail: String(r.status||"") === "❌"
+    }))
+    .sort((a,b) => (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
+}
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 // 월 데이터 집계(디자인/뱃지용)
 function summarizeByDate(rows){
   const map = new Map();
@@ -119,7 +137,7 @@ function summarizeByDate(rows){
   return map;
 }
 
-// ====== 미니 달력: 확정 집계 + 렌더 ======
+// ====== 미니 달력: 확정/OK 집계 + 렌더 ======
 function confirmedDateSet(){
   const set = new Set();
   for (const r of monthRows){
@@ -130,8 +148,6 @@ function confirmedDateSet(){
   }
   return set;
 }
-
-// ▼ 추가: 전원 가능(OK) 날짜 집합
 function okDateSet(){
   const set = new Set();
   if (totalMembers <= 0) return set;
@@ -158,7 +174,7 @@ function renderMiniCal(){
   const today = new Date(); today.setHours(0,0,0,0);
 
   const confirmed = confirmedDateSet();
-  const ok = okDateSet(); // ▼ 전원 가능 날짜
+  const ok = okDateSet();
 
   // 요일 헤더
   const dows = ['일','월','화','수','목','금','토'];
@@ -179,15 +195,17 @@ function renderMiniCal(){
       if (d.getMonth() !== month) cell.classList.add('dim');
       if (d.getTime() === today.getTime()) cell.classList.add('today');
 
-      // ▼ OK/확정 표시
-      if (ok.has(dStr)) cell.classList.add('ok');                       // 전원 가능
-      if (confirmed.has(dStr)) {                                        // 확정
+      // 날짜 텍스트 먼저 넣고 → dot/확정은 그 다음에 추가 (textContent가 기존 요소 지우는 문제 방지)
+      cell.textContent = d.getDate();
+
+      if (ok.has(dStr)) cell.classList.add('ok'); // 전원 가능(연녹)
+
+      if (confirmed.has(dStr)) {
         cell.classList.add('confirmed');
-        const dot = document.createElement('i'); dot.className = 'dot';
+        const dot = document.createElement('i');
+        dot.className = 'dot';
         cell.appendChild(dot);
       }
-
-      cell.textContent = d.getDate();
 
       // 클릭 → 메인 캘린더 해당 날짜로 스크롤
       cell.addEventListener('click', () => {
@@ -199,7 +217,6 @@ function renderMiniCal(){
     }
   }
 }
-
 
 // ====== 멤버 셀렉트 채우기 ======
 function populateMemberSelect() {
@@ -286,7 +303,6 @@ function buildDayTile(d, inMonth){
     // 2) 백그라운드 저장
     apiPost({ action:'toggleUnavailable', date: dStr, member_name:selectedMember, is_unavail: newVal })
       .then(() => {
-        // 현재 월 캐시 업데이트
         saveCache(keyMonth(d.getFullYear(), d.getMonth()+1), monthRows);
       })
       .catch(err => {
@@ -321,11 +337,33 @@ function renderGrid(){
 
 // ====== 날짜 상세 모달 ======
 function openDayDialog(d){
+  const dateStr = ymd(d);
   dayTitle.textContent = formatK(d);
-  const row = findRow(ymd(d), selectedMember);
+  const row = findRow(dateStr, selectedMember);
   chkUnavail.checked = row?.status === '❌';
   noteBox.value = row?.note || '';
-  dayDlg.dataset.date = ymd(d);
+  dayDlg.dataset.date = dateStr;
+
+  // 다른 멤버 메모/상태 채우기 (HTML에 #othersList가 있을 때만)
+  const list = document.getElementById('othersList');
+  if (list){
+    const others = getOthersForDate(dateStr, selectedMember);
+    list.innerHTML = "";
+    if (others.length === 0){
+      list.innerHTML = `<div class="onote"><div class="onote__text">다른 멤버 메모 없음</div></div>`;
+    } else {
+      for (const o of others){
+        const item = document.createElement('div');
+        item.className = 'onote';
+        item.innerHTML = `
+          <div class="onote__who">${o.emoji} ${o.name}${o.isUnavail ? ' — ❌' : ''}</div>
+          ${o.note ? `<div class="onote__text">${escapeHtml(o.note)}</div>` : ''}
+        `;
+        list.appendChild(item);
+      }
+    }
+  }
+
   dayDlg.showModal();
 }
 btnCloseDay.onclick = () => dayDlg.close();

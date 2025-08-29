@@ -125,26 +125,38 @@ button:active{ transform:translateY(1px); }
 
 .footer{ color:#7a7a7a; font-size:12px; text-align:center; padding:12px 0 18px; }
 
-/* ===== others (다른 멤버 메모) ===== */
-.others{
-  margin: 12px 0 8px;
-  padding: 10px 10px 6px;
+/* ===== others (다른 멤버 메모 - <details>) ===== */
+details.others{
+  margin:12px 0 8px;
+  padding:10px;
   background:#faf7ff;
   border:1px solid #ede6ff;
-  border-radius: 12px;
+  border-radius:12px;
 }
-.others-hd{
-  font-size: 13px;
+
+/* summary 줄 스타일 + 토글 화살표 */
+details.others > summary{
+  list-style:none;
+  cursor:pointer;
+  font-weight:700;
   color:#6f59b8;
-  font-weight: 700;
-  margin-bottom: 6px;
+  font-size:13px;
+  display:flex;
+  align-items:center;
+  gap:6px;
 }
+details.others > summary::-webkit-details-marker{ display:none; }
+details.others > summary::before{ content:"▸"; font-size:12px; transform:translateY(-1px); }
+details.others[open] > summary::before{ content:"▾"; }
+
+/* 리스트/아이템 */
 .others-list{
   display:flex;
   flex-direction:column;
   gap:6px;
-  max-height: 36vh;
+  max-height:36vh;
   overflow:auto;
+  margin-top:6px;
 }
 .onote{
   background:#fff;
@@ -155,8 +167,8 @@ button:active{ transform:translateY(1px); }
 .onote__who{
   font-weight:700;
   font-size:13px;
-  margin-bottom:4px;
   color:#5743a1;
+  margin-bottom:4px;
 }
 .onote__text{
   font-size:13px;
@@ -164,6 +176,7 @@ button:active{ transform:translateY(1px); }
   white-space:pre-wrap;
   word-break:break-word;
 }
+
 
 
 /* =========================

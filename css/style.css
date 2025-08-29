@@ -12,8 +12,8 @@
   --radius:16px;
   --shadow:0 1px 0 rgba(0,0,0,.03), 0 8px 24px rgba(124,92,250,.06);
   --confirm:#3b82f6;
-  --confirm-soft:#e0f2fe;
-  --confirm-line:#93c5fd; 
+  --confirm-soft: #eaf0ff;
+  --confirm-line: #6b8cff; 
 }
 
 *{ box-sizing:border-box; }
@@ -262,6 +262,7 @@ details.others[open] > summary::before{ content:"▾"; }
   background:#eef6ff;
   border-color: var(--confirm-line);
   box-shadow: inset 0 0 0 2px var(--confirm);
+  box-shadow: inset 0 0 0 2px var(--confirm-line);
 }
 .mini-cal .mc-cell.confirmed .dot{
   top:4px; bottom:auto;

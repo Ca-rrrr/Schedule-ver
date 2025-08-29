@@ -16,14 +16,13 @@ async function apiGet(params) {
 async function apiPost(body) {
   const res = await fetch(GAS_URL + "?" + withOrigin(), {
     method: "POST",
-    // GAS에서 content-type 없이도 JSON parse 시도하도록 해둠
     body: JSON.stringify(body)
   });
   return res.json();
 }
 
 // ====== 로컬 캐시 (stale-while-revalidate) ======
-const LS_TTL = 30_000; // 30초 (원하면 10~60초 사이로 조절)
+const LS_TTL = 30_000; // 30초
 const KEY_MEM = "members:v1";
 const keyMonth = (y, m) => `month:${y}-${String(m).padStart(2,"0")}:v1`;
 
@@ -48,12 +47,13 @@ let monthRows = [];        // [{date, member_name, status, note}]
 let selectedMember = "";   // name
 let cur = new Date();      // 현재 표시 월
 
-// 디자인용 파생 상태
+// 파생 상태
 let totalMembers = 0;
-let dateSummary = new Map(); // key: 'YYYY-MM-DD' -> {unavail, notes, rows:[]}
+let dateSummary = new Map();  // key: 'YYYY-MM-DD' -> {unavail, notes, rows:[]}
 
-// ====== '확정' 판정 태그 ======
-const CONFIRM_NOTE_TAGS = ['확정', '✅', '[확정]'];
+// 확정(파랑) 관련
+let confirmedSet = new Set(); // 'YYYY-MM-DD' 집합
+let confirmMode = false;      // 확정모드 on/off
 
 // ====== 엘리먼트 ======
 const monthLabel = document.getElementById('monthLabel');
@@ -77,7 +77,7 @@ const newName = document.getElementById('newName');
 const btnAddMem = document.getElementById('btnAddMem');
 const btnCloseMem = document.getElementById('btnCloseMem');
 
-// (NEW) 확정모드 버튼
+// 확정모드 버튼 (HTML에 <button id="confirmModeBtn">확정모드</button> 추가되어 있어야 함)
 const confirmBtn = document.getElementById('confirmModeBtn');
 
 // ====== 유틸 ======
@@ -108,57 +108,50 @@ function findRow(dateStr, name){
   return monthRows.find(r => r.date === dateStr && r.member_name === name);
 }
 
-// ---- 다른 멤버 메모/상태 헬퍼 + escape ----
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// 다른 멤버 메모/상태(다이얼로그용) — 멤버별 1줄로 합치기
 function getOthersForDate(dateStr, exceptName){
   const colorMap = new Map(members.map(m => [m.name, m.color || ""]));
-  // 해당 날짜의 모든 행(나 제외)
   const rows = (monthRows || []).filter(r => r.date === dateStr && r.member_name !== exceptName);
 
-  // 멤버별로 하나로 합치기: ❌는 OR, 메모는 "가장 긴(있는)" 메모 우선
   const by = new Map();
   for (const r of rows){
     const name = r.member_name;
     const note = String(r.note || '').trim();
     const isUnavail = String(r.status || '') === '❌';
-
     const prev = by.get(name) || { name, emoji: colorMap.get(name) || "", note: "", isUnavail: false };
     prev.isUnavail = prev.isUnavail || isUnavail;
     if (note && note.length > prev.note.length) prev.note = note;
     by.set(name, prev);
   }
-
   return [...by.values()]
-    .filter(x => x.note || x.isUnavail) // 빈내용은 숨김
+    .filter(x => x.note || x.isUnavail)
     .sort((a,b) => (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
 }
 
-// 타일 미리보기도 멤버별 1줄로 합치기
+// 타일 미리보기(멤버별 1줄)
 function notePreviewForDate(dateStr){
   const rows = (dateSummary.get(dateStr)?.rows) || [];
   const emojiMap = new Map(members.map(m => [m.name, m.color || ""]));
-
   const by = new Map();
   for (const r of rows){
     const name = r.member_name;
     const note = String(r.note || '').trim();
     const isUnavail = String(r.status || '') === '❌';
-
     const prev = by.get(name) || { name, emoji: emojiMap.get(name) || "", text: "", isUnavail: false };
     prev.isUnavail = prev.isUnavail || isUnavail;
     if (note && note.length > prev.text.length) prev.text = note;
     by.set(name, prev);
   }
-
   return [...by.values()]
     .filter(p => p.text || p.isUnavail)
     .sort((a,b) => (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
 }
 
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-// 월 데이터 집계(디자인/뱃지용)
+// 월 데이터 집계(뱃지용)
 function summarizeByDate(rows){
   const map = new Map();
   for(const r of rows){
@@ -172,34 +165,45 @@ function summarizeByDate(rows){
   return map;
 }
 
-// ====== 미니 달력: 확정/OK 집계 + 렌더 ======
-function confirmedDateSet(){
-  const set = new Set();
-  for (const r of monthRows){
-    const note = String(r.note || '');
-    if (CONFIRM_NOTE_TAGS.some(tag => note.includes(tag))) {
-      set.add(String(r.date).slice(0,10));
-    }
-  }
-  return set;
+// ====== 확정(파랑) 관련 ======
+async function loadConfirmed(){
+  const y = cur.getFullYear();
+  const m = cur.getMonth()+1;
+  const r = await apiGet({ action:'confirmed', year:y, month:m });
+  if (r.ok) confirmedSet = new Set(r.data || []);
+  else confirmedSet = new Set();
 }
+function toggleConfirmLocal(dateStr, on){
+  if (on) confirmedSet.add(dateStr); else confirmedSet.delete(dateStr);
+}
+async function toggleConfirmServer(dateStr, on){
+  const res = await apiPost({ action:'toggleConfirm', date: dateStr, confirm: !!on });
+  if (!res.ok) throw new Error(res.error || 'toggleConfirm failed');
+}
+function updateConfirmButtonUI(){
+  if (!confirmBtn) return;
+  confirmBtn.classList.toggle('on', confirmMode);
+  confirmBtn.textContent = confirmMode ? '확정모드 ON' : '확정모드';
+  document.body.classList.toggle('confirm-mode', confirmMode);
+}
+
+// ====== 미니 달력 ======
 function okDateSet(){
   const set = new Set();
   if (totalMembers <= 0) return set;
 
   const first = firstOfMonth(cur);
   const month = first.getMonth();
-  const start = new Date(first); start.setDate(1 - start.getDay()); // 일요일 시작 기준 6주(42칸)
+  const start = new Date(first); start.setDate(1 - start.getDay()); // 6주(42칸)
   for (let i=0; i<42; i++){
     const d = new Date(start); d.setDate(start.getDate() + i);
     if (d.getMonth() !== month) continue;
     const key = ymd(d);
-    const s = dateSummary.get(key);          // 데이터가 없으면 unavail=0으로 간주
+    const s = dateSummary.get(key);
     if (!s || s.unavail === 0) set.add(key); // 아무도 ❌ 없으면 OK
   }
   return set;
 }
-
 function renderMiniCal(){
   const wrap = document.getElementById('miniCal');
   if (!wrap) return;
@@ -208,10 +212,8 @@ function renderMiniCal(){
   const month = cur.getMonth();
   const today = new Date(); today.setHours(0,0,0,0);
 
-  const confirmed = confirmedDateSet();
   const ok = okDateSet();
 
-  // 요일 헤더
   const dows = ['일','월','화','수','목','금','토'];
   wrap.innerHTML = '';
   for (const d of dows){
@@ -221,7 +223,6 @@ function renderMiniCal(){
     wrap.appendChild(h);
   }
 
-  // 날짜 셀
   for (const wk of weeks){
     for (const d of wk){
       const dStr = ymd(d);
@@ -230,18 +231,16 @@ function renderMiniCal(){
       if (d.getMonth() !== month) cell.classList.add('dim');
       if (d.getTime() === today.getTime()) cell.classList.add('today');
 
-      // 텍스트 먼저
       cell.textContent = d.getDate();
 
-      if (ok.has(dStr)) cell.classList.add('ok'); // 전원 가능(연녹)
-      if (confirmed.has(dStr)) {
+      if (ok.has(dStr)) cell.classList.add('ok');
+      if (confirmedSet.has(dStr)) {
         cell.classList.add('confirmed');
         const dot = document.createElement('i');
         dot.className = 'dot';
         cell.appendChild(dot);
       }
 
-      // 클릭 → 메인 캘린더 해당 날짜로 스크롤
       cell.addEventListener('click', () => {
         const target = document.querySelector(`.day[data-date="${dStr}"]`);
         target?.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
@@ -265,8 +264,8 @@ function populateMemberSelect() {
   sel.value = selectedMember || "";
 }
 
-// ====== 타일 생성 (디자인 적용 + 옵티미스틱 반영) ======
-function buildDayTile(d, inMonth, confirmedSet){
+// ====== 타일 생성 ======
+function buildDayTile(d, inMonth){
   const dStr = ymd(d);
   const sum = dateSummary.get(dStr) || {unavail:0, notes:0, rows:[]};
   const yesCount = Math.max(totalMembers - sum.unavail, 0);
@@ -281,12 +280,36 @@ function buildDayTile(d, inMonth, confirmedSet){
   const isOk = inMonth && sum.unavail === 0;
   if (isOk) el.classList.add('ok');
 
-  const isConfirmed = isOk && confirmedSet && confirmedSet.has(dStr); // “가능”이면서 확정
+  const isConfirmed = isOk && confirmedSet.has(dStr);
   if (isConfirmed) el.classList.add('confirmed');
 
   if (myRow?.status === '❌') el.classList.add('unavail-me');
   const today = new Date(); today.setHours(0,0,0,0);
   if (d.getTime() === today.getTime()) el.classList.add('today');
+
+  // 확정모드: 초록칸 클릭으로 토글
+  if (confirmMode && isOk) {
+    el.classList.add('can-confirm');
+    el.title = isConfirmed ? '확정 해제' : '이 날짜 확정하기';
+    el.addEventListener('click', async (e) => {
+      // 내부 버튼/체크 클릭은 무시
+      if (e.target.closest('.day__actions')) return;
+      const wantOn = !confirmedSet.has(dStr);
+      // 1) 즉시 반영
+      toggleConfirmLocal(dStr, wantOn);
+      renderGrid(); renderMiniCal();
+      try {
+        // 2) 서버 반영
+        await toggleConfirmServer(dStr, wantOn);
+        refreshVersionBaseline();
+      } catch (err){
+        // 되돌림
+        toggleConfirmLocal(dStr, !wantOn);
+        renderGrid(); renderMiniCal();
+        alert('확정 토글 실패: ' + (err?.message || err));
+      }
+    });
+  }
 
   // 헤더
   const head = document.createElement('div');
@@ -302,7 +325,7 @@ function buildDayTile(d, inMonth, confirmedSet){
   `;
   el.appendChild(head);
 
-  // --- 메모 미리보기(모바일 2줄 / 데스크톱 3줄) ---
+  // 미리보기
   const previews = notePreviewForDate(dStr);
   if (previews.length) {
     const pv = document.createElement('div');
@@ -345,7 +368,7 @@ function buildDayTile(d, inMonth, confirmedSet){
   btn.className = 'thin';
   btn.textContent = '메모';
 
-  // ---- 로컬 상태 즉시 반영 유틸 ----
+  // 체크 토글(옵티미스틱)
   function applyToggleLocal(dateStr, name, isUnavail) {
     const idx = monthRows.findIndex(r => r.date === dateStr && r.member_name === name);
     if (isUnavail) {
@@ -365,18 +388,15 @@ function buildDayTile(d, inMonth, confirmedSet){
     const newVal = cb.checked;
     cb.disabled = true;
 
-    // 1) 즉시 반영
     applyToggleLocal(dStr, selectedMember, newVal);
     renderGrid(); renderMiniCal();
 
-    // 2) 백그라운드 저장
     apiPost({ action:'toggleUnavailable', date: dStr, member_name:selectedMember, is_unavail: newVal })
       .then(() => {
         saveCache(keyMonth(d.getFullYear(), d.getMonth()+1), monthRows);
-        refreshVersionBaseline(); // 내 액션 뒤 버전 기준 갱신
+        refreshVersionBaseline();
       })
       .catch(err => {
-        // 실패: 되돌림
         applyToggleLocal(dStr, selectedMember, !newVal);
         renderGrid(); renderMiniCal();
         alert('불가 저장 실패: ' + (err?.message || err));
@@ -396,12 +416,11 @@ function buildDayTile(d, inMonth, confirmedSet){
 function renderGrid(){
   monthLabel.textContent = `${cur.getFullYear()}년 ${cur.getMonth()+1}월`;
   grid.innerHTML = "";
-  const confirmed = confirmedDateSet(); 
   const weeks = monthDates(cur);
   for (const wk of weeks){
     for (const d of wk){
       const inMonth = (d.getMonth() === cur.getMonth());
-      grid.appendChild(buildDayTile(d, inMonth, confirmed));
+      grid.appendChild(buildDayTile(d, inMonth));
     }
   }
 }
@@ -415,7 +434,7 @@ function openDayDialog(d){
   noteBox.value = row?.note || '';
   dayDlg.dataset.date = dateStr;
 
-  // 다른 멤버 메모/상태 채우기
+  // 다른 멤버 메모/상태
   const wrapDetails = document.getElementById('othersWrap');
   const list = document.getElementById('othersList');
   if (list){
@@ -434,20 +453,18 @@ function openDayDialog(d){
         `;
         list.appendChild(item);
       }
-      if (wrapDetails) wrapDetails.open = true; // 내용 있으면 자동 펼침
+      if (wrapDetails) wrapDetails.open = true;
     }
   }
 
   dayDlg.showModal();
 }
-
 btnCloseDay.onclick = () => dayDlg.close();
 
-// ---- 메모+토글 로컬 반영 유틸 ----
+// ---- 메모 저장 ----
 function applySaveDayLocal(dateStr, name, isUnavail, note) {
   const idx = monthRows.findIndex(r => r.date === dateStr && r.member_name === name);
   const trimmed = (note || '').trim();
-
   if (idx >= 0) {
     monthRows[idx].status = isUnavail ? '❌' : '';
     monthRows[idx].note = trimmed;
@@ -459,36 +476,31 @@ function applySaveDayLocal(dateStr, name, isUnavail, note) {
   }
   dateSummary = summarizeByDate(monthRows);
 }
-
 btnSaveNote.onclick = async () => {
   const date = dayDlg.dataset.date;
   const isUnavail = chkUnavail.checked;
   const note = noteBox.value;
 
-  // 1) 즉시 반영 + 닫기
   applySaveDayLocal(date, selectedMember, isUnavail, note);
   renderGrid(); renderMiniCal();
   btnSaveNote.disabled = true; btnSaveNote.textContent = '저장중…';
   dayDlg.close();
 
   try {
-    // 2) 서버 저장을 '순서대로' 보냄 → 중복 삽입 레이스 방지
     await apiPost({ action:'toggleUnavailable', date, member_name:selectedMember, is_unavail: isUnavail });
     await apiPost({ action:'saveNote', date, member_name:selectedMember, note });
-
     const d = new Date(date + "T00:00:00");
     saveCache(keyMonth(d.getFullYear(), d.getMonth()+1), monthRows);
-    refreshVersionBaseline(); // 내 액션 뒤 버전 기준 갱신
+    refreshVersionBaseline();
   } catch (err){
     alert('메모 저장 실패: ' + (err?.message || err));
-    // 서버와 어긋났을 수 있으니 한 번 동기화
     await loadMonth();
   } finally {
     btnSaveNote.disabled = false; btnSaveNote.textContent = '저장';
   }
 };
 
-// ====== 멤버 관리 모달 ======
+// ====== 멤버 관리 ======
 function fillEmojiSelect(selEl, val){
   selEl.innerHTML = "";
   for (const e of EMOJI_CHOICES){
@@ -547,6 +559,19 @@ btnAddMem.onclick = async () => {
   refreshVersionBaseline();
 };
 
+// ====== 확정모드 버튼 ======
+if (confirmBtn){
+  confirmBtn.addEventListener('click', async () => {
+    confirmMode = !confirmMode;
+    updateConfirmButtonUI();
+    if (confirmMode) {                // 켜질 때 최신 확정셋 로드
+      await loadConfirmed();
+    }
+    renderGrid(); renderMiniCal();
+  });
+  updateConfirmButtonUI();
+}
+
 // ====== 라이브 동기화(버전 폴링) ======
 let curVer = { members: null, month: null };
 let liveTimer = null;
@@ -571,6 +596,7 @@ async function checkLiveOnce(){
       await loadMembers();
     }
     if (curVer.month && v.month !== curVer.month) {
+      // 확정 변경도 month 버전에 얹어서 감지
       await loadMonth();
     }
     curVer = v;
@@ -580,7 +606,7 @@ function startLive(){
   if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
   refreshVersionBaseline();
   const loop = async () => {
-    const interval = document.hidden ? 15000 : 6000; // 백그라운드 시 느리게
+    const interval = document.hidden ? 15000 : 6000;
     await checkLiveOnce();
     liveTimer = setTimeout(loop, interval);
   };
@@ -608,24 +634,6 @@ document.getElementById('reloadBtn').onclick = async () => {
 };
 sel.onchange = async (e) => { selectedMember = e.target.value || ""; await loadMonth(); };
 
-// (NEW) 확정모드 토글
-if (confirmBtn){
-  // 초기화 (저장된 상태 불러오기)
-  try {
-    const on = localStorage.getItem('confirmMode') === '1';
-    document.body.classList.toggle('confirming', on);
-    confirmBtn.classList.toggle('active', on);
-  } catch {}
-  confirmBtn.addEventListener('click', () => {
-    const nowOn = !document.body.classList.contains('confirming');
-    document.body.classList.toggle('confirming', nowOn);
-    confirmBtn.classList.toggle('active', nowOn);
-    try { localStorage.setItem('confirmMode', nowOn ? '1' : '0'); } catch {}
-    // 스타일만 바뀌면 되므로 재렌더(데이터는 그대로)
-    renderGrid(); renderMiniCal();
-  });
-}
-
 // ====== 데이터 로더 ======
 async function loadMembers(){
   const r = await apiGet({ action: "members" });
@@ -639,21 +647,30 @@ async function loadMembers(){
 async function loadMonth(){
   const y = cur.getFullYear();
   const m = cur.getMonth()+1;
-  const r = await apiGet({ action:"month", year:y, month:m });
-  if (!r.ok) throw new Error(r.error || "month failed");
-  monthRows = r.data || [];
+
+  // month + confirmed 동시 로드
+  const [rm, rc] = await Promise.all([
+    apiGet({ action:"month", year:y, month:m }),
+    apiGet({ action:"confirmed", year:y, month:m })
+  ]);
+
+  if (!rm.ok) throw new Error(rm.error || "month failed");
+  monthRows = rm.data || [];
   dateSummary = summarizeByDate(monthRows);
+
+  confirmedSet = new Set((rc.ok && rc.data) ? rc.data : []);
+
   renderGrid(); renderMiniCal();
   saveCache(keyMonth(y,m), monthRows);
 }
 
-// ====== 최초 부팅 (병렬 + 캐시 우선) ======
+// ====== 최초 부팅 ======
 (async function boot(){
   try{
     const y = cur.getFullYear();
     const m = cur.getMonth()+1;
 
-    // 1) 캐시 있으면 즉시 그리기
+    // 캐시로 빠르게
     const memCached = loadCache(KEY_MEM);
     const monCached = loadCache(keyMonth(y,m));
     if (memCached) {
@@ -666,10 +683,11 @@ async function loadMonth(){
       renderGrid(); renderMiniCal();
     }
 
-    // 2) 최신 데이터 병렬로 가져와서 교체
-    const [r1, r2] = await Promise.all([
+    // 최신 데이터
+    const [r1, r2, r3] = await Promise.all([
       apiGet({ action: "members" }),
-      apiGet({ action: "month", year: y, month: m })
+      apiGet({ action: "month", year: y, month: m }),
+      apiGet({ action: "confirmed", year: y, month: m })
     ]);
 
     if (r1.ok) {
@@ -682,14 +700,17 @@ async function loadMonth(){
     if (r2.ok) {
       monthRows = r2.data || [];
       dateSummary = summarizeByDate(monthRows);
-      renderGrid(); renderMiniCal();
       saveCache(keyMonth(y,m), monthRows);
     }
+    if (r3.ok) {
+      confirmedSet = new Set(r3.data || []);
+    }
+
+    renderGrid(); renderMiniCal();
   }catch(err){
     console.error(err);
     alert("초기 로드 실패: " + err.message);
   } finally {
-    // 라이브 폴링 시작
     startLive();
   }
 })();

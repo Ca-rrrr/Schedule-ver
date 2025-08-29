@@ -108,17 +108,49 @@ function findRow(dateStr, name){
 // ---- 다른 멤버 메모/상태 헬퍼 + escape ----
 function getOthersForDate(dateStr, exceptName){
   const colorMap = new Map(members.map(m => [m.name, m.color || ""]));
-  return (monthRows || [])
-    .filter(r => r.date === dateStr && r.member_name !== exceptName)
-    .filter(r => (String(r.note||"").trim() !== "") || String(r.status||"") === "❌")
-    .map(r => ({
-      name: r.member_name,
-      emoji: colorMap.get(r.member_name) || "",
-      note: String(r.note||""),
-      isUnavail: String(r.status||"") === "❌"
-    }))
+  // 해당 날짜의 모든 행(나 제외)
+  const rows = (monthRows || []).filter(r => r.date === dateStr && r.member_name !== exceptName);
+
+  // 멤버별로 하나로 합치기: ❌는 OR, 메모는 "가장 긴(있는)" 메모 우선
+  const by = new Map();
+  for (const r of rows){
+    const name = r.member_name;
+    const note = String(r.note || '').trim();
+    const isUnavail = String(r.status || '') === '❌';
+
+    const prev = by.get(name) || { name, emoji: colorMap.get(name) || "", note: "", isUnavail: false };
+    prev.isUnavail = prev.isUnavail || isUnavail;
+    if (note && note.length > prev.note.length) prev.note = note;
+    by.set(name, prev);
+  }
+
+  return [...by.values()]
+    .filter(x => x.note || x.isUnavail) // 빈내용은 숨김
     .sort((a,b) => (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
 }
+
+// 타일 미리보기도 멤버별 1줄로 합치기
+function notePreviewForDate(dateStr){
+  const rows = (dateSummary.get(dateStr)?.rows) || [];
+  const emojiMap = new Map(members.map(m => [m.name, m.color || ""]));
+
+  const by = new Map();
+  for (const r of rows){
+    const name = r.member_name;
+    const note = String(r.note || '').trim();
+    const isUnavail = String(r.status || '') === '❌';
+
+    const prev = by.get(name) || { name, emoji: emojiMap.get(name) || "", text: "", isUnavail: false };
+    prev.isUnavail = prev.isUnavail || isUnavail;
+    if (note && note.length > prev.text.length) prev.text = note;
+    by.set(name, prev);
+  }
+
+  return [...by.values()]
+    .filter(p => p.text || p.isUnavail)
+    .sort((a,b) => (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
+}
+
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -262,22 +294,13 @@ function buildDayTile(d, inMonth, confirmedSet){
     <div class="badges">
       <span class="badge ok">☺️${yesCount}</span>
       ${sum.notes > 0 ? `<span class="badge note">📝${sum.notes}</span>` : ''}
-      ${isConfirmed ? `<span class="badge confirm">확정</span>` : ''}   <!-- ← 추가 -->
+      ${isConfirmed ? `<span class="badge confirm">확정</span>` : ''}
     </div>
   `;
   el.appendChild(head);
 
   // --- 메모 미리보기(모바일 2줄 / 데스크톱 3줄) ---
-  const previews = (dateSummary.get(dStr)?.rows || [])
-    .filter(r => (String(r.note||"").trim() !== "") || String(r.status||"") === "❌")
-    .map(r => ({
-      name: r.member_name,
-      emoji: (members.find(m => m.name === r.member_name)?.color) || "",
-      text: String(r.note||"").trim(),
-      isUnavail: String(r.status||"") === "❌"
-    }))
-    .sort((a,b) => (b.text ? 1:0) - (a.text ? 1:0) || (b.isUnavail - a.isUnavail) || a.name.localeCompare(b.name));
-
+  const previews = notePreviewForDate(dStr);
   if (previews.length) {
     const pv = document.createElement('div');
     pv.className = 'day__preview';
@@ -287,7 +310,6 @@ function buildDayTile(d, inMonth, confirmedSet){
       const line = document.createElement('div');
       line.className = 'pvline';
       const who = `${p.emoji ? (p.emoji + ' ') : ''}${escapeHtml(p.name)}`;
-      // 메모가 있으면 메모 텍스트를, 없으면 이름+❌만 보여줌 (불필요한 [불가] 텍스트 제거)
       line.innerHTML = `
         <span class="pv-who">${who}${p.isUnavail ? ' <span class="pv-tag">❌</span>' : ''}</span>
         ${p.text ? `<span class="pv-text">${escapeHtml(p.text)}</span>` : ''}
@@ -446,24 +468,21 @@ btnSaveNote.onclick = async () => {
   btnSaveNote.disabled = true; btnSaveNote.textContent = '저장중…';
   dayDlg.close();
 
-  // 2) 서버에 동시에 저장 (병렬)
-  Promise.all([
-    apiPost({ action:'toggleUnavailable', date, member_name:selectedMember, is_unavail: isUnavail }),
-    apiPost({ action:'saveNote', date, member_name:selectedMember, note })
-  ])
-  .then(() => {
+  try {
+    // 2) 서버 저장을 '순서대로' 보냄 → 중복 삽입 레이스 방지
+    await apiPost({ action:'toggleUnavailable', date, member_name:selectedMember, is_unavail: isUnavail });
+    await apiPost({ action:'saveNote', date, member_name:selectedMember, note });
+
     const d = new Date(date + "T00:00:00");
     saveCache(keyMonth(d.getFullYear(), d.getMonth()+1), monthRows);
     refreshVersionBaseline(); // 내 액션 뒤 버전 기준 갱신
-  })
-  .catch(err => {
+  } catch (err){
     alert('메모 저장 실패: ' + (err?.message || err));
     // 서버와 어긋났을 수 있으니 한 번 동기화
-    loadMonth();
-  })
-  .finally(() => {
+    await loadMonth();
+  } finally {
     btnSaveNote.disabled = false; btnSaveNote.textContent = '저장';
-  });
+  }
 };
 
 // ====== 멤버 관리 모달 ======

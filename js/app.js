@@ -344,28 +344,32 @@ function openDayDialog(d){
   noteBox.value = row?.note || '';
   dayDlg.dataset.date = dateStr;
 
-  // 다른 멤버 메모/상태 채우기 (HTML에 #othersList가 있을 때만)
+  // 다른 멤버 메모/상태 채우기
+  const wrapDetails = document.getElementById('othersWrap');
   const list = document.getElementById('othersList');
   if (list){
     const others = getOthersForDate(dateStr, selectedMember);
     list.innerHTML = "";
     if (others.length === 0){
       list.innerHTML = `<div class="onote"><div class="onote__text">다른 멤버 메모 없음</div></div>`;
+      if (wrapDetails) wrapDetails.open = false;
     } else {
       for (const o of others){
         const item = document.createElement('div');
         item.className = 'onote';
         item.innerHTML = `
-          <div class="onote__who">${o.emoji} ${o.name}${o.isUnavail ? ' — ❌' : ''}</div>
-          ${o.note ? `<div class="onote__text">${escapeHtml(o.note)}</div>` : ''}
+          <div class="onote__who">${o.emoji} ${escapeHtml(o.name)}${o.isUnavail ? ' — ❌' : ''}</div>
+          ${o.note ? `<div class="onote__text">${escapeHtml(o.note).replace(/\n/g,'<br>')}</div>` : ''}
         `;
         list.appendChild(item);
       }
+      if (wrapDetails) wrapDetails.open = true; // 내용 있으면 자동 펼침
     }
   }
 
   dayDlg.showModal();
 }
+
 btnCloseDay.onclick = () => dayDlg.close();
 
 // ---- 메모+토글 로컬 반영 유틸 ----

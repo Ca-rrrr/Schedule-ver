@@ -51,6 +51,20 @@ button{
   border-radius:10px; cursor:pointer;
 }
 button:active{ transform:translateY(1px); }
+/* Confirm mode button */
+#confirmModeBtn.active{
+  background:#e8f0ff;
+  border-color:#bcd3ff;
+}
+
+/* (옵션) 확정모드 시 시각 강조 */
+body.confirming .day.ok.confirmed{
+  background:linear-gradient(180deg,#e9f2ff,#dbe7ff);
+  box-shadow:var(--shadow), 0 0 0 2px #3b82f6;
+}
+body.confirming .day.ok:not(.confirmed){
+  filter:saturate(0.85);
+}
 
 /* =========================
    Main grid

@@ -77,6 +77,9 @@ const newName = document.getElementById('newName');
 const btnAddMem = document.getElementById('btnAddMem');
 const btnCloseMem = document.getElementById('btnCloseMem');
 
+// (NEW) 확정모드 버튼
+const confirmBtn = document.getElementById('confirmModeBtn');
+
 // ====== 유틸 ======
 function ymd(d){ return d.toISOString().slice(0,10); }
 function formatK(d){
@@ -604,6 +607,24 @@ document.getElementById('reloadBtn').onclick = async () => {
   refreshVersionBaseline();
 };
 sel.onchange = async (e) => { selectedMember = e.target.value || ""; await loadMonth(); };
+
+// (NEW) 확정모드 토글
+if (confirmBtn){
+  // 초기화 (저장된 상태 불러오기)
+  try {
+    const on = localStorage.getItem('confirmMode') === '1';
+    document.body.classList.toggle('confirming', on);
+    confirmBtn.classList.toggle('active', on);
+  } catch {}
+  confirmBtn.addEventListener('click', () => {
+    const nowOn = !document.body.classList.contains('confirming');
+    document.body.classList.toggle('confirming', nowOn);
+    confirmBtn.classList.toggle('active', nowOn);
+    try { localStorage.setItem('confirmMode', nowOn ? '1' : '0'); } catch {}
+    // 스타일만 바뀌면 되므로 재렌더(데이터는 그대로)
+    renderGrid(); renderMiniCal();
+  });
+}
 
 // ====== 데이터 로더 ======
 async function loadMembers(){

@@ -151,18 +151,16 @@ button:active{ transform:translateY(1px); }
 .mini-cal .mc-cell.dim{ opacity:.45; }
 .mini-cal .mc-cell.today{ outline:2px solid var(--accent); outline-offset:-2px; }
 
-/* 전원 가능(OK) 날짜 */
 .mini-cal .mc-cell.ok{
-  background:#eaf8ea;
-  border-color:#bfe5bf;
+  background: #dff6df;
+  border-color: #88db88;
+  box-shadow: inset 0 0 0 2px #a6e3a6;
+}
+.mini-cal .mc-cell.ok.confirmed{
+  /* 확정까지 붙은 경우 더 또렷하게 */
+  box-shadow: inset 0 0 0 2px #55c955;
 }
 
-/* 확정 날짜 */
-.mini-cal .mc-cell.confirmed{
-  background:#e9f9ff;
-  border-color:#9bd7ff;
-  font-weight:700;
-}
 
 /* OK + 확정 동시 */
 .mini-cal .mc-cell.ok.confirmed{

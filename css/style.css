@@ -310,7 +310,6 @@ details.others[open] > summary::before{ content:"▾"; }
 @media (max-width: 560px){
   .grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .day{ min-height:clamp(140px, 34vw, 210px); }
-  .line span{ display:none; }
   .day__dow{ font-size:11px; }
   button{ font-size:13px; }
   .mini-cal .mc-cell{ height:32px; }

@@ -70,11 +70,11 @@ body.confirming .day.ok:not(.confirmed){
    Main grid
    ========================= */
 .grid{
-  display:grid;
-  gap:var(--gap);
-  padding:12px;
-  grid-template-columns: repeat(7, minmax(114px, 1fr)); /* 데스크톱 7칸 */
-  /* grid-auto-rows: 1fr;  필요 시 균등행 */
+  display: grid;
+  gap: var(--gap);
+  padding: 12px;
+  /* 데스크톱: 7열 고정, 각 셀은 동일 폭 */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 /* =========================
@@ -87,7 +87,13 @@ body.confirming .day.ok:not(.confirmed){
   padding:12px 14px;
   min-height:clamp(128px, 26vw, 180px);
   display:flex; flex-direction:column; justify-content:space-between;
+
+  /* 추가 */
+  width: 100%;
+  min-width: 0;            /* ← grid 아이템이 내용 때문에 칸을 밀어내지 않게 */
+  box-sizing: border-box;  /* 패딩 포함 계산 */
 }
+
 .day.muted{
   background:var(--muted); opacity:.96;
   box-shadow: var(--shadow), 0 0 0 1.5px #e6e6ea;
@@ -295,14 +301,14 @@ details.others[open] > summary::before{ content:"▾"; }
    Responsive
    ========================= */
 @media (max-width: 980px){
-  .grid{ grid-template-columns: repeat(5, 1fr); }
+  .grid{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 760px){
   #monthLabel{ font-size:18px; }
-  .grid{ grid-template-columns: repeat(4, 1fr); }
+  .grid{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 560px){
-  .grid{ grid-template-columns: repeat(3, 1fr); }
+  .grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .day{ min-height:clamp(140px, 34vw, 210px); }
   .line span{ display:none; }
   .day__dow{ font-size:11px; }
@@ -310,6 +316,6 @@ details.others[open] > summary::before{ content:"▾"; }
   .mini-cal .mc-cell{ height:32px; }
 }
 @media (max-width: 380px){
-  .grid{ grid-template-columns: repeat(2, 1fr); }
+  .grid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .day{ min-height:clamp(152px, 40vw, 220px); }
 }

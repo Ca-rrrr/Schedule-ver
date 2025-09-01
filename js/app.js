@@ -453,7 +453,7 @@ const chkUnavail = document.getElementById('chkUnavail');
 const noteBox = document.getElementById('noteBox');
 const btnSaveNote = document.getElementById('btnSaveNote');
 const btnCloseDay = document.getElementById('btnCloseDay');
-const chkConfirm = document.getElementById('chkConfirm');
+const chkConfirm = document.getElementById('chkConfirmed');
 
 function openDayDialog(d){
   const dateStr = ymd(d);
@@ -462,23 +462,21 @@ function openDayDialog(d){
   chkUnavail.checked = row?.status === '❌';
   noteBox.value = row?.note || '';
   dayDlg.dataset.date = dateStr;
-  noteBox.value = row?.note || '';
-  dayDlg.dataset.date = dateStr;
 
-// ⬇⬇⬇ 여기부터 붙이기
-  if (chkConfirm) {
+// ✅ 여기부터 추가
+  if (chkConfirmed) {
     // 이 날짜가 전원 OK(❌ 0명)인지
     const isOk = (dateSummary.get(dateStr)?.unavail || 0) === 0;
 
-    // 확정 체크박스 상태를 확정 데이터와 동기화
-    chkConfirm.checked  = confirmedDates.has(dateStr);
-    // OK가 아닌 날은 확정 못 하게 막기(원치 않으면 이 줄 지워도 됨)
-    chkConfirm.disabled = !isOk;
+    // 확정 체크 상태를 현재 확정 데이터와 동기화
+    chkConfirmed.checked  = confirmedDates.has(dateStr);
+    // OK가 아닌 날은 확정 불가(원치 않으면 이 줄 삭제)
+    chkConfirmed.disabled = !isOk;
 
-    // 모달에서도 확정 토글을 허용 (원치 않으면 아래 onchange 블럭 삭제)
-    chkConfirm.onchange = async () => {
-      const wantOn = chkConfirm.checked;
-      if (!isOk) { chkConfirm.checked = false; return; } // 안전장치
+    // 모달에서 바로 확정 토글 (원치 않으면 이 onchange 블록 통째로 삭제)
+    chkConfirmed.onchange = async () => {
+      const wantOn = chkConfirmed.checked;
+      if (!isOk) { chkConfirmed.checked = false; return; } // 안전장치
 
       // 낙관적 업데이트
       if (wantOn) confirmedDates.add(dateStr);
@@ -491,13 +489,14 @@ function openDayDialog(d){
         // 실패 시 롤백
         if (wantOn) confirmedDates.delete(dateStr);
         else confirmedDates.add(dateStr);
-        chkConfirm.checked = !wantOn;
+        chkConfirmed.checked = !wantOn;
         renderMiniCal(); renderGrid();
         alert('확정 토글 실패: ' + (err?.message || err));
       }
     };
   }
-// ⬆⬆⬆ 여기까지
+// ✅ 여기까지 추가
+
 
   // 다른 멤버 메모/상태
   const wrapDetails = document.getElementById('othersWrap');
